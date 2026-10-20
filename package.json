@@ -10,11 +10,12 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.96",
+    "@ai-sdk/react": "^4.0.151",
     "ag-grid-community": "^36.2.0",
     "ag-grid-react": "^36.2.0",
     "ai": "^7.0.143",
     "clsx": "^2.1.1",
-    "firebase": "^13.0.0",
+    "firebase": "^9.14.0",
     "firebase-admin": "^14.5.0",
     "lucide-react": "^1.59.0",
     "next": "16.4.2",
@@ -29,7 +30,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.4.2",
+    "eslint-config-next": "^14.2.35",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

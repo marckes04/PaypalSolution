@@ -1,5 +1,5 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
+import { getFirestore, type Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -10,6 +10,21 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Singleton para evitar reinicializaciones en Next.js
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+let app: FirebaseApp | null = null;
+let firestoreInstance: Firestore | null = null;
+
+export function getDb(): Firestore {
+  if (firestoreInstance) {
+    return firestoreInstance;
+  }
+
+  if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) {
+    console.error(
+      '[PayAgent Firebase Error]: NEXT_PUBLIC_FIREBASE_PROJECT_ID is missing. Check your .env.local file and restart next dev.'
+    );
+  }
+
+  app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+  firestoreInstance = getFirestore(app);
+  return firestoreInstance;
+}

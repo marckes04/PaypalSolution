@@ -1,4 +1,4 @@
-import { db } from './client';
+import { getDb } from './client';
 import { 
   collection, 
   addDoc, 
@@ -12,22 +12,20 @@ import { PurchaseOrderDoc, OrderStatus } from '@/types/order';
 
 const ORDERS_COLLECTION = 'purchase_orders';
 
-// 1. Save the new order created by the agent.
-
-export async function savePurchaseOrder(order: Omit<PurchaseOrderDoc, 'id'>) {
+export async function savePurchaseOrder(order: Omit<PurchaseOrderDoc, 'id'>): Promise<string> {
+  const db = getDb();
   const colRef = collection(db, ORDERS_COLLECTION);
   const docRef = await addDoc(colRef, order);
   return docRef.id;
 }
-
-// 2.State updated after approval  o payment in Sandbox
 
 export async function updateOrderStatus(
   orderId: string, 
   status: OrderStatus, 
   paypalOrderId?: string,
   approvalLink?: string
-) {
+): Promise<void> {
+  const db = getDb();
   const docRef = doc(db, ORDERS_COLLECTION, orderId);
   const dataToUpdate: Record<string, unknown> = { status };
   if (paypalOrderId) dataToUpdate.paypalOrderId = paypalOrderId;
@@ -36,9 +34,8 @@ export async function updateOrderStatus(
   await updateDoc(docRef, dataToUpdate);
 }
 
-// 3. Listener in real time to feed AG Grid
-
 export function subscribeToOrders(callback: (orders: PurchaseOrderDoc[]) => void) {
+  const db = getDb();
   const q = query(collection(db, ORDERS_COLLECTION), orderBy('createdAt', 'desc'));
   
   return onSnapshot(q, (snapshot) => {
