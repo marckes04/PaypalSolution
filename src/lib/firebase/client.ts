@@ -10,21 +10,29 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-let app: FirebaseApp | null = null;
-let firestoreInstance: Firestore | null = null;
+let appInstance: FirebaseApp | null = null;
+let dbInstance: Firestore | null = null;
+let initAttempted = false;
 
-export function getDb(): Firestore {
-  if (firestoreInstance) {
-    return firestoreInstance;
+export function getDb(): Firestore | null {
+  if (typeof window === 'undefined') {
+    return null;
   }
 
-  if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) {
-    console.error(
-      '[PayAgent Firebase Error]: NEXT_PUBLIC_FIREBASE_PROJECT_ID is missing. Check your .env.local file and restart next dev.'
-    );
+  if (dbInstance) {
+    return dbInstance;
   }
 
-  app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-  firestoreInstance = getFirestore(app);
-  return firestoreInstance;
+  if (initAttempted) {
+    return null;
+  }
+
+  try {
+    initAttempted = true;
+    appInstance = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+    dbInstance = getFirestore(appInstance);
+    return dbInstance;
+  } catch {
+    return null;
+  }
 }

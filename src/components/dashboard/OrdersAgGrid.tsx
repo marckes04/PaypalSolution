@@ -6,160 +6,147 @@ import {
   ColDef, 
   ModuleRegistry, 
   AllCommunityModule,
-  ValidationModule,
-  themeQuartz,
-  colorSchemeDark
+  ValidationModule 
 } from 'ag-grid-community';
-import { subscribeToOrders, updateOrderStatus } from '@/lib/firebase/ordersService';
-import { PurchaseOrderDoc, OrderStatus } from '@/types/order';
-import { ExternalLink, CheckCircle2, XCircle } from 'lucide-react';
 
 ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
 
-// Configuración oficial del tema oscuro v33+
-const darkTheme = themeQuartz.withPart(colorSchemeDark);
+import 'ag-grid-community/styles/ag-grid.css';
+import 'ag-grid-community/styles/ag-theme-alpine.css';
+import { subscribeToOrders } from '@/lib/firebase/ordersService';
+import { PurchaseOrderDoc } from '@/types/order';
+import { CheckCircle2, Clock, ExternalLink } from 'lucide-react';
 
 export default function OrdersAgGrid() {
-  const [orders, setOrders] = useState<PurchaseOrderDoc[]>([]);
+  const [rowData, setRowData] = useState<PurchaseOrderDoc[]>([]);
+
+  const fetchOrders = async () => {
+    try {
+      const res = await fetch('/api/orders');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.orders && Array.isArray(data.orders)) {
+          setRowData(data.orders);
+        }
+      }
+    } catch {
+      // Ignore background fetch errors
+    }
+  };
 
   useEffect(() => {
-    try {
-      const unsubscribe = subscribeToOrders((liveOrders) => {
-        setOrders(liveOrders);
-      });
-      return () => {
-        if (typeof unsubscribe === 'function') unsubscribe();
-      };
-    } catch (err) {
-      console.warn('Waiting for Firestore connection...', err);
-    }
+    const unsubscribe = subscribeToOrders((orders) => {
+      if (orders && orders.length > 0) {
+        setRowData(orders);
+      }
+    });
+
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 2500);
+
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
   }, []);
 
-  const handleApprove = async (order: PurchaseOrderDoc) => {
-    if (!order.id) return;
-    await updateOrderStatus(order.id, 'APPROVED');
-  };
-
-  const handleReject = async (order: PurchaseOrderDoc) => {
-    if (!order.id) return;
-    await updateOrderStatus(order.id, 'REJECTED');
-  };
-
-  const columnDefs = useMemo<ColDef<PurchaseOrderDoc>[]>(() => [
-    {
-      field: 'id',
-      headerName: 'Order ID',
-      width: 140,
-      valueGetter: (params) => (params.data?.id ? `${params.data.id.substring(0, 8)}...` : 'N/A'),
-    },
-    {
-      field: 'department',
-      headerName: 'Department',
-      filter: true,
-      width: 150,
-    },
-    {
-      field: 'totalAmount',
-      headerName: 'Total Amount',
-      width: 150,
-      valueFormatter: (params) => `$${params.value ? Number(params.value).toFixed(2) : '0.00'} ${params.data?.currency || 'USD'}`,
-    },
-    {
-      field: 'status',
-      headerName: 'Status',
-      width: 180,
-      cellRenderer: (params: { value?: OrderStatus }) => {
-        const status = params.value || 'PENDING_APPROVAL';
-        const statusColors: Record<OrderStatus, string> = {
-          PENDING_APPROVAL: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-          APPROVED: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-          PAID: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-          FAILED: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
-          REJECTED: 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
-        };
-
-        return (
-          <span className={`inline-block px-2.5 py-1 text-xs font-semibold rounded-full border ${statusColors[status] || ''}`}>
-            {status}
-          </span>
-        );
+  const columnDefs = useMemo<ColDef<PurchaseOrderDoc>[]>(
+    () => [
+      {
+        headerName: 'Order ID',
+        field: 'id',
+        flex: 1,
+        cellRenderer: (params: any) => (
+          <span className="font-mono text-xs text-sky-400">{params.value || 'N/A'}</span>
+        ),
       },
-    },
-    {
-      field: 'paypalOrderId',
-      headerName: 'PayPal Reference',
-      width: 200,
-      cellRenderer: (params: { data?: PurchaseOrderDoc }) => {
-        if (!params.data?.paypalOrderId) return <span className="text-zinc-500">N/A</span>;
-        return (
-          <div className="flex items-center gap-1.5 font-mono text-xs text-sky-400">
-            <span>{params.data.paypalOrderId}</span>
-            {params.data.approvalLink && (
-              <a
-                href={params.data.approvalLink}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:text-sky-300"
-              >
-                <ExternalLink size={13} />
-              </a>
-            )}
-          </div>
-        );
+      {
+        headerName: 'Department',
+        field: 'department',
+        flex: 1,
       },
-    },
-    {
-      headerName: 'HITL Action',
-      width: 160,
-      cellRenderer: (params: { data?: PurchaseOrderDoc }) => {
-        const order = params.data;
-        if (!order || order.status !== 'PENDING_APPROVAL') return null;
-
-        return (
-          <div className="flex items-center gap-2 h-full">
-            <button
-              onClick={() => handleApprove(order)}
-              className="p-1 rounded bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 transition"
-              title="Approve Order"
+      {
+        headerName: 'Total Amount',
+        field: 'totalAmount',
+        flex: 1,
+        valueFormatter: (params) => (params.value ? `$${Number(params.value).toFixed(2)} USD` : '$0.00 USD'),
+      },
+      {
+        headerName: 'Status',
+        field: 'status',
+        flex: 1,
+        cellRenderer: (params: any) => {
+          const isApproved = params.value === 'APPROVED';
+          return (
+            <div className="flex items-center gap-1.5 h-full">
+              {isApproved ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-950 text-emerald-400 border border-emerald-800">
+                  <CheckCircle2 className="w-3 h-3" /> APPROVED
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-950 text-amber-400 border border-amber-800">
+                  <Clock className="w-3 h-3" /> PENDING_APPROVAL
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        headerName: 'PayPal Reference',
+        field: 'paypalOrderId',
+        flex: 1.2,
+        cellRenderer: (params: any) => (
+          <span className="font-mono text-xs text-zinc-400">{params.value || 'Pending'}</span>
+        ),
+      },
+      {
+        headerName: 'HITL Action',
+        field: 'approvalLink',
+        flex: 1,
+        cellRenderer: (params: any) => {
+          if (!params.value) return <span className="text-zinc-600 text-xs">Auto-cleared</span>;
+          return (
+            <a
+              href={params.value}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 underline"
             >
-              <CheckCircle2 size={16} />
-            </button>
-            <button
-              onClick={() => handleReject(order)}
-              className="p-1 rounded bg-rose-600/30 hover:bg-rose-600/50 text-rose-300 transition"
-              title="Reject Order"
-            >
-              <XCircle size={16} />
-            </button>
-          </div>
-        );
+              Review in PayPal <ExternalLink className="w-3 h-3" />
+            </a>
+          );
+        },
       },
-    },
-  ], []);
+    ],
+    []
+  );
 
   return (
-    <div className="w-full h-full flex flex-col bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-xl">
-      <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/60">
+    <div className="h-full flex flex-col bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
+      <div className="px-6 py-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/60 backdrop-blur">
         <div>
-          <h2 className="text-lg font-semibold text-zinc-100">Live Procurement Ledger</h2>
-          <p className="text-xs text-zinc-400">Real-time AG Grid sync with PayPal Sandbox &amp; Firestore</p>
+          <h2 className="font-semibold text-zinc-100">Live Procurement Ledger</h2>
+          <p className="text-xs text-zinc-500">Real-time AG Grid sync with PayPal Sandbox & Firestore</p>
         </div>
-        <div className="text-xs font-mono px-2.5 py-1 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
-          {orders.length} Records
-        </div>
+        <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
+          {rowData.length} Records
+        </span>
       </div>
-      <div className="flex-1 w-full" style={{ minHeight: '350px' }}>
+
+      <div className="flex-1 w-full ag-theme-alpine-dark">
         <AgGridReact
-          theme={darkTheme}
-          rowData={orders}
+          theme="legacy"
+          rowData={rowData}
           columnDefs={columnDefs}
           defaultColDef={{
             sortable: true,
+            filter: true,
             resizable: true,
           }}
           pagination={true}
           paginationPageSize={10}
-          paginationPageSizeSelector={[10, 20, 50]}
+          paginationPageSizeSelector={[10, 20, 50, 100]}
         />
       </div>
     </div>
