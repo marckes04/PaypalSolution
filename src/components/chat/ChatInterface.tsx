@@ -9,6 +9,81 @@ interface ChatMessage {
   content: string;
 }
 
+// Formateador seguro de Markdown para negritas, enlaces, código y listas
+function FormattedMessage({ content }: { content: string }) {
+  const lines = content.split('\n');
+
+  return (
+    <div className="space-y-1.5 leading-relaxed">
+      {lines.map((line, lineIdx) => {
+        if (!line.trim()) {
+          return <div key={lineIdx} className="h-2" />;
+        }
+
+        // Formateo de elementos dentro de cada línea
+        const formatInline = (text: string) => {
+          // Tokenización de enlaces Markdown: [texto](url)
+          const parts = text.split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|`[^`]+`)/g);
+
+          return parts.map((part, partIdx) => {
+            // Enlaces
+            const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+            if (linkMatch) {
+              return (
+                <a
+                  key={partIdx}
+                  href={linkMatch[2]}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sky-400 hover:text-sky-300 underline font-medium break-all"
+                >
+                  {linkMatch[1]}
+                </a>
+              );
+            }
+
+            // Negritas
+            if (part.startsWith('**') && part.endsWith('**')) {
+              return (
+                <strong key={partIdx} className="font-semibold text-zinc-100">
+                  {part.slice(2, -2)}
+                </strong>
+              );
+            }
+
+            // Código en línea
+            if (part.startsWith('`') && part.endsWith('`')) {
+              return (
+                <code
+                  key={partIdx}
+                  className="font-mono text-xs bg-zinc-900 border border-zinc-700/80 px-1.5 py-0.5 rounded text-sky-300"
+                >
+                  {part.slice(1, -1)}
+                </code>
+              );
+            }
+
+            return part;
+          });
+        };
+
+        // Lista con viñeta
+        if (line.trim().startsWith('•') || line.trim().startsWith('-')) {
+          const itemText = line.trim().replace(/^[•\-]\s*/, '');
+          return (
+            <div key={lineIdx} className="flex items-start gap-2 pl-1 text-zinc-300">
+              <span className="text-sky-400 text-xs mt-1">•</span>
+              <span>{formatInline(itemText)}</span>
+            </div>
+          );
+        }
+
+        return <p key={lineIdx}>{formatInline(line)}</p>;
+      })}
+    </div>
+  );
+}
+
 export function ChatInterface() {
   const [selectedDept, setSelectedDept] = useState('Engineering');
   const [input, setInput] = useState('');
@@ -64,7 +139,7 @@ export function ChatInterface() {
           );
         }
       }
-    } catch (err: any) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
@@ -120,13 +195,13 @@ export function ChatInterface() {
                 )}
 
                 <div
-                  className={`max-w-[80%] rounded-xl px-4 py-3 text-sm leading-relaxed ${
+                  className={`max-w-[85%] rounded-xl px-4 py-3 text-sm ${
                     isUser
                       ? 'bg-sky-600 text-white rounded-tr-none'
-                      : 'bg-zinc-800 border border-zinc-700/60 text-zinc-200 rounded-tl-none space-y-2'
+                      : 'bg-zinc-800 border border-zinc-700/60 text-zinc-200 rounded-tl-none'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{m.content}</p>
+                  <FormattedMessage content={m.content} />
                 </div>
 
                 {isUser && (
