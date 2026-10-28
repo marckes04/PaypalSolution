@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { payPalClient } from '@/lib/paypal/client';
 import { savePurchaseOrder } from '@/lib/firebase/ordersService';
+import { PurchaseOrderDoc, OrderStatus } from '@/types/order';
 
 export const createOrderSchema = z.object({
   department: z.string().describe('The requesting department, e.g. Engineering, Marketing'),
@@ -12,18 +13,17 @@ export const createOrderSchema = z.object({
     })
   ).describe('List of items to purchase'),
   justification: z.string().optional().describe('Business justification for audit logs'),
-  notes: z.string().optional().describe('Alternative notes or justification field'),
+  notes: z.string().optional().describe('Alternative notes field'),
 });
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 
 export async function executeCreateOrder(params: CreateOrderInput, originalPrompt: string) {
-  // Redondeo determinista a 2 decimales para importes monetarios USD
   const rawTotal = params.items.reduce((acc, item) => acc + item.quantity * item.unitPrice, 0);
   const totalAmount = Math.round(rawTotal * 100) / 100;
 
   const requiresApproval = totalAmount >= 500;
-  const initialStatus = requiresApproval ? 'PENDING_APPROVAL' : 'APPROVED';
+  const initialStatus: OrderStatus = requiresApproval ? 'PENDING_APPROVAL' : 'APPROVED';
 
   let paypalOrderId = 'N/A';
   let approvalLink = '';
@@ -43,20 +43,31 @@ export async function executeCreateOrder(params: CreateOrderInput, originalPromp
   }
 
   const timestampIso = new Date().toISOString();
-  let firestoreId = `local-${Date.now()}`;
 
+  const newOrderDoc: Omit<PurchaseOrderDoc, 'id'> = {
+    prompt: originalPrompt,
+    department: params.department,
+    totalAmount,
+    currency: 'USD',
+    status: initialStatus,
+    paypalOrderId,
+    approvalLink,
+    items: params.items,
+    logs: [
+      {
+        timestamp: timestampIso,
+        agentStep: 'POLICY_EVALUATION',
+        detail: requiresApproval
+          ? `Total $${totalAmount.toFixed(2)} USD exceeds corporate threshold ($500.00). Routed to PENDING_APPROVAL.`
+          : `Total $${totalAmount.toFixed(2)} USD is under threshold ($500.00). Straight-Through APPROVED.`,
+      },
+    ],
+    createdAt: timestampIso,
+  };
+
+  let firestoreId = `po_${Date.now()}`;
   try {
-    firestoreId = await savePurchaseOrder({
-      department: params.department,
-      items: params.items,
-      totalAmount,
-      currency: 'USD',
-      status: initialStatus,
-      paypalOrderId,
-      approvalLink,
-      justification: params.justification || params.notes || originalPrompt,
-      createdAt: timestampIso,
-    });
+    firestoreId = await savePurchaseOrder(newOrderDoc);
   } catch (dbErr: unknown) {
     console.warn('[Firestore Warning]: Order processed in PayPal but failed to write to DB:', dbErr);
   }
