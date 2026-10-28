@@ -1,5 +1,6 @@
 import ChatInterface from '@/components/chat/ChatInterface';
 import OrdersAgGrid from '@/components/dashboard/OrdersAgGrid';
+import KpiCards from '@/components/dashboard/KpiCards';
 import { ShieldCheck } from 'lucide-react';
 
 export default function Home() {
@@ -24,13 +25,19 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Split Grid */}
-      <div className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-4rem)]">
-        <div className="lg:col-span-5 h-full">
-          <ChatInterface />
-        </div>
-        <div className="lg:col-span-7 h-full">
-          <OrdersAgGrid />
+      {/* Main Workspace */}
+      <div className="flex-1 p-6 flex flex-col max-w-[1800px] w-full mx-auto">
+        {/* Real-Time Governance & Financial KPIs */}
+        <KpiCards />
+
+        {/* Main Split Grid */}
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[640px] h-[calc(100vh-16rem)]">
+          <div className="lg:col-span-5 h-full">
+            <ChatInterface />
+          </div>
+          <div className="lg:col-span-7 h-full">
+            <OrdersAgGrid />
+          </div>
         </div>
       </div>
     </main>
