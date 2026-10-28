@@ -1,32 +1,28 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Send, Bot, User } from 'lucide-react';
+import { Send, Bot, User, Clock } from 'lucide-react';
 
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  timestamp: string;
 }
 
-// Formateador seguro de Markdown para negritas, enlaces, código y listas
+// Markdown-Parser für fettgedruckten Text, Links, Code und Aufzählungslisten
 function FormattedMessage({ content }: { content: string }) {
   const lines = content.split('\n');
 
   return (
     <div className="space-y-1.5 leading-relaxed">
       {lines.map((line, lineIdx) => {
-        if (!line.trim()) {
-          return <div key={lineIdx} className="h-2" />;
-        }
+        if (!line.trim()) return <div key={lineIdx} className="h-2" />;
 
-        // Formateo de elementos dentro de cada línea
         const formatInline = (text: string) => {
-          // Tokenización de enlaces Markdown: [texto](url)
           const parts = text.split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|`[^`]+`)/g);
 
           return parts.map((part, partIdx) => {
-            // Enlaces
             const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
             if (linkMatch) {
               return (
@@ -42,7 +38,6 @@ function FormattedMessage({ content }: { content: string }) {
               );
             }
 
-            // Negritas
             if (part.startsWith('**') && part.endsWith('**')) {
               return (
                 <strong key={partIdx} className="font-semibold text-zinc-100">
@@ -51,7 +46,6 @@ function FormattedMessage({ content }: { content: string }) {
               );
             }
 
-            // Código en línea
             if (part.startsWith('`') && part.endsWith('`')) {
               return (
                 <code
@@ -67,7 +61,6 @@ function FormattedMessage({ content }: { content: string }) {
           });
         };
 
-        // Lista con viñeta
         if (line.trim().startsWith('•') || line.trim().startsWith('-')) {
           const itemText = line.trim().replace(/^[•\-]\s*/, '');
           return (
@@ -90,6 +83,13 @@ export function ChatInterface() {
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
+  const formatCurrentTime = () => {
+    return new Date().toLocaleString('en-US', {
+      dateStyle: 'short',
+      timeStyle: 'medium',
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const query = input.trim();
@@ -99,6 +99,7 @@ export function ChatInterface() {
       id: Date.now().toString(),
       role: 'user',
       content: `[Dept: ${selectedDept}] ${query}`,
+      timestamp: formatCurrentTime(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -117,14 +118,24 @@ export function ChatInterface() {
         }),
       });
 
-      if (!res.ok) throw new Error('Failed to communicate with agent');
+      if (!res.ok) throw new Error('Failed to communicate with PayAgent');
 
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let assistantText = '';
 
       const assistantMessageId = (Date.now() + 1).toString();
-      setMessages((prev) => [...prev, { id: assistantMessageId, role: 'assistant', content: '' }]);
+      const assistantTimestamp = formatCurrentTime();
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: '',
+          timestamp: assistantTimestamp,
+        },
+      ]);
 
       if (reader) {
         while (true) {
@@ -146,6 +157,7 @@ export function ChatInterface() {
           id: (Date.now() + 2).toString(),
           role: 'assistant',
           content: 'Sorry, an error occurred while processing your requisition.',
+          timestamp: formatCurrentTime(),
         },
       ]);
     } finally {
@@ -155,6 +167,7 @@ export function ChatInterface() {
 
   return (
     <div className="flex flex-col h-full bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
+      {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/60 backdrop-blur">
         <div className="flex items-center gap-2">
           <Bot className="w-5 h-5 text-sky-400" />
@@ -175,6 +188,7 @@ export function ChatInterface() {
         </div>
       </div>
 
+      {/* Message List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-zinc-500 text-sm text-center px-4">
@@ -195,13 +209,24 @@ export function ChatInterface() {
                 )}
 
                 <div
-                  className={`max-w-[85%] rounded-xl px-4 py-3 text-sm ${
+                  className={`max-w-[85%] rounded-xl px-4 py-3 text-sm flex flex-col justify-between ${
                     isUser
                       ? 'bg-sky-600 text-white rounded-tr-none'
                       : 'bg-zinc-800 border border-zinc-700/60 text-zinc-200 rounded-tl-none'
                   }`}
                 >
                   <FormattedMessage content={m.content} />
+
+                  <div
+                    className={`mt-2.5 pt-1.5 border-t text-[10px] flex items-center gap-1 ${
+                      isUser
+                        ? 'border-sky-500/40 text-sky-100 justify-end'
+                        : 'border-zinc-700/60 text-zinc-400 justify-start'
+                    }`}
+                  >
+                    <Clock className="w-2.5 h-2.5" />
+                    <span>{m.timestamp}</span>
+                  </div>
                 </div>
 
                 {isUser && (
@@ -215,6 +240,7 @@ export function ChatInterface() {
         )}
       </div>
 
+      {/* Input Field */}
       <form onSubmit={handleSubmit} className="p-4 border-t border-zinc-800 bg-zinc-900/80">
         <div className="flex items-center gap-2">
           <input

@@ -15,7 +15,7 @@ import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { subscribeToOrders } from '@/lib/firebase/ordersService';
 import { PurchaseOrderDoc } from '@/types/order';
-import { CheckCircle2, Clock, ExternalLink } from 'lucide-react';
+import { CheckCircle2, Clock, ExternalLink, Calendar } from 'lucide-react';
 
 export default function OrdersAgGrid() {
   const [rowData, setRowData] = useState<PurchaseOrderDoc[]>([]);
@@ -30,7 +30,7 @@ export default function OrdersAgGrid() {
         }
       }
     } catch {
-      // Ignore background fetch errors
+      // Ignorar
     }
   };
 
@@ -52,6 +52,29 @@ export default function OrdersAgGrid() {
 
   const columnDefs = useMemo<ColDef<PurchaseOrderDoc>[]>(
     () => [
+    // Reemplaza la primera columna dentro de columnDefs:
+{
+  headerName: 'Date & Time',
+  field: 'createdAt' as any,
+  flex: 1.3,
+  cellRenderer: (params: any) => {
+    if (!params.value) return <span className="text-zinc-600 text-xs">Processing...</span>;
+    const dateObj = new Date(params.value);
+    const formatted = isNaN(dateObj.getTime())
+      ? String(params.value)
+      : dateObj.toLocaleString('en-US', {
+          dateStyle: 'short',
+          timeStyle: 'medium',
+        });
+
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-zinc-300">
+        <Calendar className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+        <span>{formatted}</span>
+      </div>
+    );
+  },
+},
       {
         headerName: 'Order ID',
         field: 'id',
