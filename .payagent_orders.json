@@ -1,5 +1,62 @@
 [
   {
+    "id": "po_1793640610329_m8ddb",
+    "department": "Engineering",
+    "items": [
+      {
+        "name": "Requested items",
+        "quantity": 1,
+        "unitPrice": 50
+      }
+    ],
+    "totalAmount": 50,
+    "status": "APPROVED",
+    "paypalOrderId": null,
+    "approvalUrl": null,
+    "createdAt": "2026-11-02T17:30:10.329Z",
+    "auditLog": [
+      "Requisition processed on 2026-11-02T17:30:10.329Z - Dept: Engineering - Total: $50"
+    ]
+  },
+  {
+    "id": "po_1793640599941_vuja7",
+    "department": "Engineering",
+    "items": [
+      {
+        "name": "Requested items",
+        "quantity": 1,
+        "unitPrice": 50
+      }
+    ],
+    "totalAmount": 50,
+    "status": "APPROVED",
+    "paypalOrderId": null,
+    "approvalUrl": null,
+    "createdAt": "2026-11-02T17:29:59.941Z",
+    "auditLog": [
+      "Requisition processed on 2026-11-02T17:29:59.941Z - Dept: Engineering - Total: $50"
+    ]
+  },
+  {
+    "id": "po_1793640502245_3nt64",
+    "department": "Engineering",
+    "items": [
+      {
+        "name": "Requested items",
+        "quantity": 1,
+        "unitPrice": 50
+      }
+    ],
+    "totalAmount": 50,
+    "status": "APPROVED",
+    "paypalOrderId": null,
+    "approvalUrl": null,
+    "createdAt": "2026-11-02T17:28:22.245Z",
+    "auditLog": [
+      "Requisition processed on 2026-11-02T17:28:22.245Z - Dept: Engineering - Total: $50"
+    ]
+  },
+  {
     "id": "po_1793637408005",
     "prompt": "[Dept: Engineering] Procure 3 high-end developer workstations at $600 each for Engineering",
     "department": "Engineering",
