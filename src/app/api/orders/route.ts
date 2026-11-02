@@ -1,34 +1,13 @@
-import { NextResponse, type NextRequest } from 'next/server';
-import { getDb } from '@/lib/firebase/client';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { NextResponse } from 'next/server';
+import { getAllOrders } from '@/lib/firebase/ordersStorage';
 
-export async function GET(request: NextRequest) {
-  void request.nextUrl.searchParams;
-
-  const db = getDb();
-
-  // Si Firestore no está disponible, leemos del ledger global en memoria de Node
-  if (!db) {
-    const globalOrders = (global as any).__PAYAGENT_ORDERS__ || [];
-    return NextResponse.json({ orders: globalOrders }, {
-      headers: { 'Cache-Control': 'no-store, max-age=0' },
-    });
-  }
-
+export async function GET() {
   try {
-    const q = query(collection(db, 'purchase_orders'), orderBy('createdAt', 'desc'));
-    const snapshot = await getDocs(q);
-    const orders = snapshot.docs.map((docSnap) => ({
-      id: docSnap.id,
-      ...docSnap.data(),
-    }));
-    return NextResponse.json({ orders }, {
-      headers: { 'Cache-Control': 'no-store, max-age=0' },
-    });
-  } catch {
-    const globalOrders = (global as any).__PAYAGENT_ORDERS__ || [];
-    return NextResponse.json({ orders: globalOrders }, {
-      headers: { 'Cache-Control': 'no-store, max-age=0' },
-    });
+    const orders = getAllOrders();
+    return NextResponse.json({ orders });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch orders';
+    console.error('[API_ORDERS_ERROR]', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

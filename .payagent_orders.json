@@ -1,0 +1,52 @@
+[
+  {
+    "id": "po_1793637408005",
+    "prompt": "[Dept: Engineering] Procure 3 high-end developer workstations at $600 each for Engineering",
+    "department": "Engineering",
+    "totalAmount": 1800,
+    "currency": "USD",
+    "status": "PENDING_APPROVAL",
+    "paypalOrderId": "9TW77309MH215791X",
+    "approvalLink": "https://www.sandbox.paypal.com/checkoutnow?token=9TW77309MH215791X",
+    "items": [
+      {
+        "name": "high-end developer workstations",
+        "quantity": 3,
+        "unitPrice": 600
+      }
+    ],
+    "logs": [
+      {
+        "timestamp": "2026-11-02T16:36:48.005Z",
+        "agentStep": "POLICY_EVALUATION",
+        "detail": "Total $1800.00 USD exceeds corporate threshold ($500.00). Routed to PENDING_APPROVAL."
+      }
+    ],
+    "createdAt": "2026-11-02T16:36:48.005Z"
+  },
+  {
+    "id": "po_1793637376856",
+    "prompt": "[Dept: Engineering] Procure 2 ergonomic mice at $45 each for Quality Assurance",
+    "department": "Engineering",
+    "totalAmount": 90,
+    "currency": "USD",
+    "status": "APPROVED",
+    "paypalOrderId": "381713683C7811700",
+    "approvalLink": "https://www.sandbox.paypal.com/checkoutnow?token=381713683C7811700",
+    "items": [
+      {
+        "name": "ergonomic mice",
+        "quantity": 2,
+        "unitPrice": 45
+      }
+    ],
+    "logs": [
+      {
+        "timestamp": "2026-11-02T16:36:16.855Z",
+        "agentStep": "POLICY_EVALUATION",
+        "detail": "Total $90.00 USD is under threshold ($500.00). Straight-Through APPROVED."
+      }
+    ],
+    "createdAt": "2026-11-02T16:36:16.855Z"
+  }
+]

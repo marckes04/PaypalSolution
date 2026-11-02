@@ -2,24 +2,18 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import { 
-  ColDef, 
-  ModuleRegistry, 
-  AllCommunityModule,
-  ValidationModule 
-} from 'ag-grid-community';
-
-ModuleRegistry.registerModules([AllCommunityModule, ValidationModule]);
-
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
-import { subscribeToOrders } from '@/lib/firebase/ordersService';
+import { ColDef, ModuleRegistry } from 'ag-grid-community';
+import { AllCommunityModule } from 'ag-grid-community';
+import { ExternalLink, CheckCircle2, Clock } from 'lucide-react';
 import { PurchaseOrderDoc } from '@/types/order';
-import { CheckCircle2, Clock, ExternalLink, Calendar } from 'lucide-react';
+
+// Registrar módulos de AG Grid Community
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 export default function OrdersAgGrid() {
   const [rowData, setRowData] = useState<PurchaseOrderDoc[]>([]);
 
+  // Consultar la API del backend
   const fetchOrders = async () => {
     try {
       const res = await fetch('/api/orders');
@@ -30,57 +24,40 @@ export default function OrdersAgGrid() {
         }
       }
     } catch {
-      // Ignorar
+      // Ignorar fallos transitorios de red
     }
   };
 
   useEffect(() => {
-    const unsubscribe = subscribeToOrders((orders) => {
-      if (orders && orders.length > 0) {
-        setRowData(orders);
-      }
-    });
-
     fetchOrders();
     const interval = setInterval(fetchOrders, 2500);
-
-    return () => {
-      unsubscribe();
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, []);
 
   const columnDefs = useMemo<ColDef<PurchaseOrderDoc>[]>(
     () => [
-    // Reemplaza la primera columna dentro de columnDefs:
-{
-  headerName: 'Date & Time',
-  field: 'createdAt' as any,
-  flex: 1.3,
-  cellRenderer: (params: any) => {
-    if (!params.value) return <span className="text-zinc-600 text-xs">Processing...</span>;
-    const dateObj = new Date(params.value);
-    const formatted = isNaN(dateObj.getTime())
-      ? String(params.value)
-      : dateObj.toLocaleString('en-US', {
-          dateStyle: 'short',
-          timeStyle: 'medium',
-        });
-
-    return (
-      <div className="flex items-center gap-1.5 text-xs text-zinc-300">
-        <Calendar className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-        <span>{formatted}</span>
-      </div>
-    );
-  },
-},
+      {
+        headerName: 'Date & Time',
+        field: 'createdAt',
+        flex: 1.2,
+        valueFormatter: (params) => {
+          if (!params.value) return '-';
+          return new Date(params.value).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+        },
+      },
       {
         headerName: 'Order ID',
         field: 'id',
         flex: 1,
         cellRenderer: (params: any) => (
-          <span className="font-mono text-xs text-sky-400">{params.value || 'N/A'}</span>
+          <span className="font-mono text-xs text-zinc-400">
+            {params.value ? `${params.value.slice(0, 10)}...` : '-'}
+          </span>
         ),
       },
       {
@@ -92,26 +69,28 @@ export default function OrdersAgGrid() {
         headerName: 'Total Amount',
         field: 'totalAmount',
         flex: 1,
-        valueFormatter: (params) => (params.value ? `$${Number(params.value).toFixed(2)} USD` : '$0.00 USD'),
+        valueFormatter: (params) => {
+          const val = Number(params.value) || 0;
+          return `$${val.toFixed(2)}`;
+        },
       },
       {
         headerName: 'Status',
         field: 'status',
-        flex: 1,
+        flex: 1.1,
         cellRenderer: (params: any) => {
-          const isApproved = params.value === 'APPROVED';
+          const status = params.value;
+          if (status === 'APPROVED') {
+            return (
+              <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-medium">
+                <CheckCircle2 size={13} /> APPROVED
+              </span>
+            );
+          }
           return (
-            <div className="flex items-center gap-1.5 h-full">
-              {isApproved ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-950 text-emerald-400 border border-emerald-800">
-                  <CheckCircle2 className="w-3 h-3" /> APPROVED
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-950 text-amber-400 border border-amber-800">
-                  <Clock className="w-3 h-3" /> PENDING_APPROVAL
-                </span>
-              )}
-            </div>
+            <span className="inline-flex items-center gap-1 text-amber-400 text-xs font-medium">
+              <Clock size={13} /> PENDING
+            </span>
           );
         },
       },
@@ -120,23 +99,30 @@ export default function OrdersAgGrid() {
         field: 'paypalOrderId',
         flex: 1.2,
         cellRenderer: (params: any) => (
-          <span className="font-mono text-xs text-zinc-400">{params.value || 'Pending'}</span>
+          <span className="font-mono text-xs text-sky-400">
+            {params.value || '-'}
+          </span>
         ),
       },
       {
         headerName: 'HITL Action',
-        field: 'approvalLink',
-        flex: 1,
+        field: 'approvalUrl',
+        flex: 1.1,
         cellRenderer: (params: any) => {
-          if (!params.value) return <span className="text-zinc-600 text-xs">Auto-cleared</span>;
+          if (!params.value) {
+            return <span className="text-zinc-600 text-xs">Automated STP</span>;
+          }
+          if (params.data?.status === 'APPROVED') {
+            return <span className="text-emerald-500 text-xs">Completed</span>;
+          }
           return (
             <a
               href={params.value}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 underline"
+              className="inline-flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 underline font-medium"
             >
-              Review in PayPal <ExternalLink className="w-3 h-3" />
+              Authorize <ExternalLink size={12} />
             </a>
           );
         },
@@ -146,20 +132,18 @@ export default function OrdersAgGrid() {
   );
 
   return (
-    <div className="h-full flex flex-col bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
-      <div className="px-6 py-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/60 backdrop-blur">
+    <div className="h-full flex flex-col bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-xl">
+      <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
         <div>
-          <h2 className="font-semibold text-zinc-100">Live Procurement Ledger</h2>
+          <h2 className="text-sm font-semibold text-zinc-100">Live Procurement Ledger</h2>
           <p className="text-xs text-zinc-500">Real-time AG Grid sync with PayPal Sandbox & Firestore</p>
         </div>
-        <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
+        <span className="text-xs text-zinc-400 bg-zinc-800/60 px-2.5 py-1 rounded-md border border-zinc-700/50">
           {rowData.length} Records
         </span>
       </div>
-
-      <div className="flex-1 w-full ag-theme-alpine-dark">
+      <div className="flex-1 w-full ag-theme-quartz-dark">
         <AgGridReact
-          theme="legacy"
           rowData={rowData}
           columnDefs={columnDefs}
           defaultColDef={{
@@ -169,7 +153,6 @@ export default function OrdersAgGrid() {
           }}
           pagination={true}
           paginationPageSize={10}
-          paginationPageSizeSelector={[10, 20, 50, 100]}
         />
       </div>
     </div>

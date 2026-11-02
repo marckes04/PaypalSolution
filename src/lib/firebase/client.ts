@@ -1,5 +1,5 @@
-import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore, Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -10,29 +10,17 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-let appInstance: FirebaseApp | null = null;
-let dbInstance: Firestore | null = null;
-let initAttempted = false;
+let app;
+let db: Firestore | null = null;
 
-export function getDb(): Firestore | null {
-  if (typeof window === 'undefined') {
-    return null;
+try {
+  if (firebaseConfig.projectId) {
+    app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+    db = getFirestore(app);
   }
-
-  if (dbInstance) {
-    return dbInstance;
-  }
-
-  if (initAttempted) {
-    return null;
-  }
-
-  try {
-    initAttempted = true;
-    appInstance = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-    dbInstance = getFirestore(appInstance);
-    return dbInstance;
-  } catch {
-    return null;
-  }
+} catch (error) {
+  console.warn('[Firebase Client Init]: Failed to initialize Firestore instance:', error);
 }
+
+export { app, db };
+export const getDb = () => db;

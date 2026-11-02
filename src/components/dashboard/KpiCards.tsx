@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import { DollarSign, Clock, ShieldCheck, TrendingUp } from 'lucide-react';
 import { PurchaseOrderDoc } from '@/types/order';
-import { subscribeToOrders } from '@/lib/firebase/ordersService';
 
 export default function KpiCards() {
   const [orders, setOrders] = useState<PurchaseOrderDoc[]>([]);
@@ -18,24 +17,14 @@ export default function KpiCards() {
         }
       }
     } catch {
-      // Ignorar fallos de red silenciosos
+      // Ignorar fallos de red transitorios
     }
   };
 
   useEffect(() => {
-    const unsubscribe = subscribeToOrders((liveOrders) => {
-      if (liveOrders && liveOrders.length > 0) {
-        setOrders(liveOrders);
-      }
-    });
-
     fetchOrders();
-    const interval = setInterval(fetchOrders, 3000);
-
-    return () => {
-      unsubscribe();
-      clearInterval(interval);
-    };
+    const interval = setInterval(fetchOrders, 2500);
+    return () => clearInterval(interval);
   }, []);
 
   const totalSpend = orders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
