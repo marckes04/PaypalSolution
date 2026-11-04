@@ -12,7 +12,6 @@ export async function POST(req: Request) {
     const userPrompt = rawMessage.replace(/^\[Dept:\s*[^\]]+\]\s*/i, '').trim();
 
     // 2. Extraer el departamento solicitado mediante "for <Depto>" o "para <Depto>"
-    // Busca únicamente la frase que contiene "for" o "para"
     const forMatch = userPrompt.match(/\b(?:for|to|para)\s+([a-zA-Z]+)\b/i);
 
     if (forMatch && forMatch[1]) {
@@ -38,7 +37,6 @@ export async function POST(req: Request) {
       ) {
         const mismatchMessage = `⚠️ Policy Mismatch: You requested supplies for **${matchedValidDept}**, but your active workspace is set to **${activeDepartment}**. Please switch your department selector to ${matchedValidDept} before submitting this requisition.`;
 
-        // Se responde inmediatamente sin registrar orden en la base de datos ni invocar PayPal
         return NextResponse.json({
           success: false,
           requiresDeptChange: true,
@@ -51,13 +49,13 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Extracción de precio
+    // 3. Extracción de precio explícito ($60, at 60, etc.)
     let unitPrice = 0;
     const priceRegexMatch = userPrompt.match(/\$\s*(\d+(\.\d+)?)/);
     if (priceRegexMatch && priceRegexMatch[1]) {
       unitPrice = parseFloat(priceRegexMatch[1]);
     } else {
-      const altPriceMatch = userPrompt.match(/at\s+(\d+(\.\d+)?)/i);
+      const altPriceMatch = userPrompt.match(/\bat\s+(\d+(\.\d+)?)/i);
       if (altPriceMatch && altPriceMatch[1]) {
         unitPrice = parseFloat(altPriceMatch[1]);
       }
@@ -65,7 +63,7 @@ export async function POST(req: Request) {
 
     // 4. Extracción de cantidad y descripción del ítem
     let quantity = 1;
-    let itemName = 'Requested items';
+    let itemName = '';
 
     const qtyRegexMatch = userPrompt.match(/(\d+)\s+([a-zA-Z0-9\s\-]+?)\s+at/i);
     if (qtyRegexMatch) {
@@ -81,8 +79,27 @@ export async function POST(req: Request) {
       }
     }
 
-    if (unitPrice <= 0) {
-      unitPrice = 50;
+    // 5. Verificación de intención de compra y datos mínimos requeridos
+    const procurementKeywords = /\b(procure|buy|order|purchase|need|request|requisition|comprar|pedir|solicitar|adquirir)\b/i;
+    const hasProcurementIntent = procurementKeywords.test(userPrompt);
+
+    // Si NO hay intención de compra o NO se especificó un precio válido:
+    // NO se crea orden ni se llama a PayPal, solo se responde conversacionalmente
+    if (!hasProcurementIntent || unitPrice <= 0) {
+      const helpMessage = `I am PayAgent, your procurement copilot. To submit a requisition, please specify the quantity, item description, and price (e.g., "Procure 2 ergonomic keyboards at $60 each for ${activeDepartment}").`;
+
+      return NextResponse.json({
+        success: true,
+        status: 'IGNORED',
+        reply: helpMessage,
+        message: helpMessage,
+        response: helpMessage,
+        content: helpMessage,
+      });
+    }
+
+    if (!itemName) {
+      itemName = 'Requested items';
     }
 
     const calculatedTotal = Number((quantity * unitPrice).toFixed(2));
@@ -98,7 +115,7 @@ export async function POST(req: Request) {
     let paypalOrderId: string | null = null;
     let approvalUrl: string | null = null;
 
-    // 5. Regla de gobernanza: Requisiciones >= $500 requieren Human-in-the-Loop vía PayPal
+    // 6. Regla de gobernanza: Requisiciones >= $500 requieren Human-in-the-Loop vía PayPal
     if (calculatedTotal >= 500) {
       try {
         const paypal = new PayPalClient();
@@ -128,7 +145,7 @@ export async function POST(req: Request) {
     const isSTP = calculatedTotal < 500;
     const orderStatus = isSTP ? 'APPROVED' : 'PENDING_APPROVAL';
 
-    // 6. Guardar la orden en Firestore / almacenamiento local
+    // 7. Guardar la orden en Firestore / almacenamiento local
     const orderData = {
       department: activeDepartment,
       items: parsedItems,

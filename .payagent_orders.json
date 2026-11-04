@@ -1,5 +1,43 @@
 [
   {
+    "id": "po_1793799094257_zuszr",
+    "department": "Engineering",
+    "items": [
+      {
+        "name": "ergonomic keyboards",
+        "quantity": 2,
+        "unitPrice": 60
+      }
+    ],
+    "totalAmount": 120,
+    "status": "APPROVED",
+    "paypalOrderId": null,
+    "approvalUrl": null,
+    "createdAt": "2026-11-04T13:31:34.257Z",
+    "auditLog": [
+      "Requisition processed on 2026-11-04T13:31:34.257Z - Dept: Engineering - Total: $120"
+    ]
+  },
+  {
+    "id": "po_1793798848228_gg53h",
+    "department": "Marketing",
+    "items": [
+      {
+        "name": "Requested items",
+        "quantity": 1,
+        "unitPrice": 50
+      }
+    ],
+    "totalAmount": 50,
+    "status": "APPROVED",
+    "paypalOrderId": null,
+    "approvalUrl": null,
+    "createdAt": "2026-11-04T13:27:28.228Z",
+    "auditLog": [
+      "Requisition processed on 2026-11-04T13:27:28.228Z - Dept: Marketing - Total: $50"
+    ]
+  },
+  {
     "id": "po_1793798315623_6txcc",
     "department": "Marketing",
     "items": [
