@@ -1,5 +1,72 @@
 [
   {
+    "id": "po_1793806770870_q276o",
+    "prompt": "Procure 40 ergonomic keyboards at $60 each for Engineering",
+    "department": "Engineering",
+    "currency": "USD",
+    "items": [
+      {
+        "name": "ergonomic keyboards",
+        "quantity": 40,
+        "unitPrice": 60
+      }
+    ],
+    "totalAmount": 2400,
+    "status": "PENDING_APPROVAL",
+    "paypalOrderId": "0DP64368KV310602H",
+    "approvalUrl": "https://www.sandbox.paypal.com/checkoutnow?token=0DP64368KV310602H",
+    "approvalLink": "https://www.sandbox.paypal.com/checkoutnow?token=0DP64368KV310602H",
+    "createdAt": "2026-11-04T15:39:30.870Z",
+    "logs": [
+      {
+        "timestamp": "2026-11-04T15:39:30.870Z",
+        "agentStep": "POLICY_EVALUATION",
+        "detail": "Total $2400.00 USD exceeds corporate threshold ($500.00). Routed to PENDING_APPROVAL."
+      }
+    ],
+    "auditLog": [
+      "Requisition processed on 2026-11-04T15:39:30.870Z - Dept: Engineering - Total: $2400"
+    ]
+  },
+  {
+    "id": "po_1793806120429_ad3nu",
+    "department": "Marketing",
+    "items": [
+      {
+        "name": "ergonomic keyboards",
+        "quantity": 2,
+        "unitPrice": 60
+      }
+    ],
+    "totalAmount": 120,
+    "status": "APPROVED",
+    "paypalOrderId": null,
+    "approvalUrl": null,
+    "createdAt": "2026-11-04T15:28:40.429Z",
+    "auditLog": [
+      "Requisition processed on 2026-11-04T15:28:40.429Z - Dept: Marketing - Total: $120"
+    ]
+  },
+  {
+    "id": "po_1793804237201_zss9s",
+    "department": "Engineering",
+    "items": [
+      {
+        "name": "ergonomic keyboards",
+        "quantity": 2,
+        "unitPrice": 60
+      }
+    ],
+    "totalAmount": 120,
+    "status": "APPROVED",
+    "paypalOrderId": null,
+    "approvalUrl": null,
+    "createdAt": "2026-11-04T14:57:17.201Z",
+    "auditLog": [
+      "Requisition processed on 2026-11-04T14:57:17.201Z - Dept: Engineering - Total: $120"
+    ]
+  },
+  {
     "id": "po_1793803532650_qk52e",
     "department": "Engineering",
     "items": [

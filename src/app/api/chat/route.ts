@@ -144,18 +144,31 @@ export async function POST(req: Request) {
 
     const isSTP = calculatedTotal < 500;
     const orderStatus = isSTP ? 'APPROVED' : 'PENDING_APPROVAL';
+    const timestampIso = new Date().toISOString();
 
-    // 7. Guardar la orden en Firestore / almacenamiento local
-    const orderData = {
+    // 7. Guardar la orden en Firestore / almacenamiento local cumpliendo la interfaz PurchaseOrderDoc
+    const orderData: any = {
+      prompt: userPrompt,
       department: activeDepartment,
+      currency: 'USD',
       items: parsedItems,
       totalAmount: calculatedTotal,
       status: orderStatus as 'APPROVED' | 'PENDING_APPROVAL',
       paypalOrderId,
       approvalUrl,
-      createdAt: new Date().toISOString(),
+      approvalLink: approvalUrl || '',
+      createdAt: timestampIso,
+      logs: [
+        {
+          timestamp: timestampIso,
+          agentStep: 'POLICY_EVALUATION',
+          detail: isSTP
+            ? `Total $${calculatedTotal.toFixed(2)} USD is under threshold ($500.00). Straight-Through APPROVED.`
+            : `Total $${calculatedTotal.toFixed(2)} USD exceeds corporate threshold ($500.00). Routed to PENDING_APPROVAL.`,
+        },
+      ],
       auditLog: [
-        `Requisition processed on ${new Date().toISOString()} - Dept: ${activeDepartment} - Total: $${calculatedTotal}`,
+        `Requisition processed on ${timestampIso} - Dept: ${activeDepartment} - Total: $${calculatedTotal}`,
       ],
     };
 
