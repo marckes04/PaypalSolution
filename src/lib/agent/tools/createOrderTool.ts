@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { payPalClient } from '@/lib/paypal/client';
+import { PayPalClient } from '@/lib/paypal/client';
 import { savePurchaseOrder } from '@/lib/firebase/ordersService';
 import { PurchaseOrderDoc, OrderStatus } from '@/types/order';
 
@@ -29,7 +29,7 @@ export async function executeCreateOrder(params: CreateOrderInput, originalPromp
   let approvalLink = '';
 
   try {
-    const paypalRes = await payPalClient.createOrder({
+    const paypalRes = await PayPalClient.createOrder({
       referenceId: `REQ-${Date.now()}`,
       amount: totalAmount,
       currency: 'USD',
