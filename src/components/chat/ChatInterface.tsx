@@ -10,7 +10,7 @@ interface ChatMessage {
   timestamp: string;
 }
 
-// Markdown-Parser für fettgedruckten Text, Links, Code und Aufzählungslisten
+// Markdown-Parser para formato de texto, links, código y viñetas
 function FormattedMessage({ content }: { content: string }) {
   const lines = content.split('\n');
 
@@ -95,6 +95,43 @@ export function ChatInterface() {
     const query = input.trim();
     if (!query || loading) return;
 
+    // =========================================================================
+    // REGLA DE GOBERNANZA: VALIDACIÓN CONTEXTUAL DE DEPARTAMENTO
+    // =========================================================================
+    const validDepts = ['marketing', 'engineering', 'operations', 'executive', 'sales', 'finance', 'hr'];
+    const forMatch = query.match(/\b(?:for|to|para)\s+([a-zA-Z]+)\b/i);
+
+    if (forMatch && forMatch[1]) {
+      const requestedDept = forMatch[1].trim().toLowerCase();
+      const currentDept = selectedDept.trim().toLowerCase();
+
+      if (validDepts.includes(requestedDept) && requestedDept !== currentDept) {
+        const capitalRequestedDept = forMatch[1].charAt(0).toUpperCase() + forMatch[1].slice(1);
+        const warningContent = `⚠️ Policy Mismatch: You requested supplies for **${capitalRequestedDept}**, but your active workspace is set to **${selectedDept}**. Please switch the department selector to ${capitalRequestedDept} before submitting this requisition.`;
+
+        // Registramos el mensaje del usuario y la advertencia en pantalla sin llamar a la API
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: 'user',
+            content: `[Dept: ${selectedDept}] ${query}`,
+            timestamp: formatCurrentTime(),
+          },
+          {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: warningContent,
+            timestamp: formatCurrentTime(),
+          },
+        ]);
+
+        setInput('');
+        return; // DETIENE EL FLUJO: No aprueba, no llama a PayPal, no toca la base de datos
+      }
+    }
+    // =========================================================================
+
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
@@ -111,6 +148,8 @@ export function ChatInterface() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          message: query,
+          department: selectedDept,
           messages: [...messages, userMessage].map((m) => ({
             role: m.role,
             content: m.content,
@@ -120,10 +159,8 @@ export function ChatInterface() {
 
       if (!res.ok) throw new Error('Failed to communicate with PayAgent');
 
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
+      const contentType = res.headers.get('content-type') || '';
       let assistantText = '';
-
       const assistantMessageId = (Date.now() + 1).toString();
       const assistantTimestamp = formatCurrentTime();
 
@@ -137,17 +174,31 @@ export function ChatInterface() {
         },
       ]);
 
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          assistantText += chunk;
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId ? { ...msg, content: assistantText } : msg
-            )
-          );
+      // Soporte híbrido: Si el backend responde Stream o si responde JSON
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        assistantText = data.reply || data.message || data.response || 'Requisition processed.';
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId ? { ...msg, content: assistantText } : msg
+          )
+        );
+      } else {
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            assistantText += chunk;
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessageId ? { ...msg, content: assistantText } : msg
+              )
+            );
+          }
         }
       }
     } catch {

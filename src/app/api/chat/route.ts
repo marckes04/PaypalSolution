@@ -6,34 +6,73 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const rawMessage: string = body.message || '';
-    const departmentName: string = body.department || 'Engineering';
+    const activeDepartment: string = (body.department || 'Engineering').trim();
 
-    // 1. Limpiar el prefijo de departamento tipo "[Dept: Marketing]"
-    const cleanMessage = rawMessage.replace(/\[Dept:\s*[^\]]+\]/gi, '').trim();
+    // 1. Quitar cualquier prefijo tipo "[Dept: ...]" para analizar solo el mensaje real
+    const userPrompt = rawMessage.replace(/^\[Dept:\s*[^\]]+\]\s*/i, '').trim();
 
-    // 2. Extraer precio ($60, 60.00, etc.)
+    // 2. Extraer el departamento solicitado mediante "for <Depto>" o "para <Depto>"
+    // Busca únicamente la frase que contiene "for" o "para"
+    const forMatch = userPrompt.match(/\b(?:for|to|para)\s+([a-zA-Z]+)\b/i);
+
+    if (forMatch && forMatch[1]) {
+      const targetDept = forMatch[1].trim();
+      const validDepartments = [
+        'Marketing',
+        'Engineering',
+        'Sales',
+        'Finance',
+        'Operations',
+        'HR',
+        'Legal',
+      ];
+
+      const matchedValidDept = validDepartments.find(
+        (d) => d.toLowerCase() === targetDept.toLowerCase()
+      );
+
+      // Si el departamento mencionado tras "for" existe y es diferente al seleccionado en la UI
+      if (
+        matchedValidDept &&
+        matchedValidDept.toLowerCase() !== activeDepartment.toLowerCase()
+      ) {
+        const mismatchMessage = `⚠️ Policy Mismatch: You requested supplies for **${matchedValidDept}**, but your active workspace is set to **${activeDepartment}**. Please switch your department selector to ${matchedValidDept} before submitting this requisition.`;
+
+        // Se responde inmediatamente sin registrar orden en la base de datos ni invocar PayPal
+        return NextResponse.json({
+          success: false,
+          requiresDeptChange: true,
+          status: 'REJECTED',
+          reply: mismatchMessage,
+          message: mismatchMessage,
+          response: mismatchMessage,
+          content: mismatchMessage,
+        });
+      }
+    }
+
+    // 3. Extracción de precio
     let unitPrice = 0;
-    const priceRegexMatch = cleanMessage.match(/\$\s*(\d+(\.\d+)?)/);
+    const priceRegexMatch = userPrompt.match(/\$\s*(\d+(\.\d+)?)/);
     if (priceRegexMatch && priceRegexMatch[1]) {
       unitPrice = parseFloat(priceRegexMatch[1]);
     } else {
-      const altPriceMatch = cleanMessage.match(/at\s+(\d+(\.\d+)?)/i);
+      const altPriceMatch = userPrompt.match(/at\s+(\d+(\.\d+)?)/i);
       if (altPriceMatch && altPriceMatch[1]) {
         unitPrice = parseFloat(altPriceMatch[1]);
       }
     }
 
-    // 3. Extraer cantidad y nombre del ítem
+    // 4. Extracción de cantidad y descripción del ítem
     let quantity = 1;
     let itemName = 'Requested items';
 
-    const qtyRegexMatch = cleanMessage.match(/(\d+)\s+([a-zA-Z0-9\s\-]+?)\s+at/i);
+    const qtyRegexMatch = userPrompt.match(/(\d+)\s+([a-zA-Z0-9\s\-]+?)\s+at/i);
     if (qtyRegexMatch) {
       if (qtyRegexMatch[1]) quantity = parseInt(qtyRegexMatch[1], 10);
       if (qtyRegexMatch[2]) itemName = qtyRegexMatch[2].trim();
     } else {
-      // Intento secundario: buscar el primer número si existe
-      const simpleNumberMatch = cleanMessage.match(/\b(\d+)\b/);
+      const simpleNumberMatch = userPrompt.match(/\b(\d+)\b/);
       if (simpleNumberMatch && simpleNumberMatch[1]) {
         const potentialQty = parseInt(simpleNumberMatch[1], 10);
         if (potentialQty > 0 && potentialQty !== unitPrice) {
@@ -42,7 +81,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Si no encontró precio, valor por defecto seguro
     if (unitPrice <= 0) {
       unitPrice = 50;
     }
@@ -60,7 +98,7 @@ export async function POST(req: Request) {
     let paypalOrderId: string | null = null;
     let approvalUrl: string | null = null;
 
-    // Regla de gobernanza: Requisiciones >= $500 requieren Human-in-the-Loop vía PayPal
+    // 5. Regla de gobernanza: Requisiciones >= $500 requieren Human-in-the-Loop vía PayPal
     if (calculatedTotal >= 500) {
       try {
         const paypal = new PayPalClient();
@@ -68,7 +106,7 @@ export async function POST(req: Request) {
           const orderResponse = await (paypal as any).createOrder(
             calculatedTotal,
             'USD',
-            `Requisition for ${departmentName}`
+            `Requisition for ${activeDepartment}`
           );
           if (orderResponse && orderResponse.id) {
             paypalOrderId = orderResponse.id;
@@ -79,8 +117,6 @@ export async function POST(req: Request) {
               ? approveLink.href
               : `https://www.sandbox.paypal.com/checkoutnow?token=${paypalOrderId}`;
           }
-        } else {
-          throw new Error('createOrder not available on PayPalClient');
         }
       } catch (paypalError) {
         console.error('[PayPal API Fallback Triggered]:', paypalError);
@@ -92,9 +128,9 @@ export async function POST(req: Request) {
     const isSTP = calculatedTotal < 500;
     const orderStatus = isSTP ? 'APPROVED' : 'PENDING_APPROVAL';
 
-    // Persistir orden de forma síncrona/segura
+    // 6. Guardar la orden en Firestore / almacenamiento local
     const orderData = {
-      department: departmentName,
+      department: activeDepartment,
       items: parsedItems,
       totalAmount: calculatedTotal,
       status: orderStatus as 'APPROVED' | 'PENDING_APPROVAL',
@@ -102,7 +138,7 @@ export async function POST(req: Request) {
       approvalUrl,
       createdAt: new Date().toISOString(),
       auditLog: [
-        `Requisition processed on ${new Date().toISOString()} - Dept: ${departmentName} - Total: $${calculatedTotal}`,
+        `Requisition processed on ${new Date().toISOString()} - Dept: ${activeDepartment} - Total: $${calculatedTotal}`,
       ],
     };
 
@@ -112,7 +148,6 @@ export async function POST(req: Request) {
       ? `Requisition for $${calculatedTotal.toFixed(2)} (${quantity}x ${itemName}) has been automatically approved via Straight-Through Processing (STP).`
       : `Requisition for $${calculatedTotal.toFixed(2)} (${quantity}x ${itemName}) exceeds the $500 threshold. Manager approval required via PayPal Sandbox.`;
 
-    // Retorna todos los campos que ChatInterface.tsx podría consultar
     return NextResponse.json({
       success: true,
       orderId: savedId,
