@@ -1,9 +1,18 @@
+'use client';
+
+import { useState } from 'react';
 import ChatInterface from '@/components/chat/ChatInterface';
 import OrdersAgGrid from '@/components/dashboard/OrdersAgGrid';
 import KpiCards from '@/components/dashboard/KpiCards';
 import { ShieldCheck } from 'lucide-react';
 
 export default function Home() {
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleOrderCreated = () => {
+    setRefreshKey((prev) => prev + 1);
+  };
+
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
       {/* Top Navigation */}
@@ -28,15 +37,15 @@ export default function Home() {
       {/* Main Workspace */}
       <div className="flex-1 p-6 flex flex-col max-w-[1800px] w-full mx-auto">
         {/* Real-Time Governance & Financial KPIs */}
-        <KpiCards />
+        <KpiCards key={`kpi-${refreshKey}`} />
 
         {/* Main Split Grid */}
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[640px] h-[calc(100vh-16rem)]">
           <div className="lg:col-span-5 h-full">
-            <ChatInterface />
+            <ChatInterface onOrderCreated={handleOrderCreated} />
           </div>
           <div className="lg:col-span-7 h-full">
-            <OrdersAgGrid />
+            <OrdersAgGrid key={`grid-${refreshKey}`} refreshTrigger={refreshKey} />
           </div>
         </div>
       </div>

@@ -10,6 +10,10 @@ interface ChatMessage {
   timestamp: string;
 }
 
+interface ChatInterfaceProps {
+  onOrderCreated?: () => void;
+}
+
 // Markdown-Parser para formato de texto, links, código y viñetas
 function FormattedMessage({ content }: { content: string }) {
   const lines = content.split('\n');
@@ -77,7 +81,7 @@ function FormattedMessage({ content }: { content: string }) {
   );
 }
 
-export function ChatInterface() {
+export function ChatInterface({ onOrderCreated }: ChatInterfaceProps) {
   const [selectedDept, setSelectedDept] = useState('Engineering');
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -183,6 +187,11 @@ export function ChatInterface() {
             msg.id === assistantMessageId ? { ...msg, content: assistantText } : msg
           )
         );
+
+        // Notificar a AG Grid y KPI Cards para que se refresquen si se procesó una orden
+        if (data.success && onOrderCreated) {
+          onOrderCreated();
+        }
       } else {
         const reader = res.body?.getReader();
         const decoder = new TextDecoder();
@@ -198,6 +207,11 @@ export function ChatInterface() {
                 msg.id === assistantMessageId ? { ...msg, content: assistantText } : msg
               )
             );
+          }
+
+          // Notificar tras terminar el streaming
+          if (onOrderCreated) {
+            onOrderCreated();
           }
         }
       }

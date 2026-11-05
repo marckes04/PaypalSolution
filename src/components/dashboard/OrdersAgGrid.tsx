@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import {
   ColDef,
@@ -27,25 +27,40 @@ const customDarkTheme = themeQuartz.withParams({
 export default function OrdersAgGrid() {
   const [rowData, setRowData] = useState<PurchaseOrderDoc[]>([]);
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     try {
-      const res = await fetch('/api/orders');
+      const res = await fetch(`/api/orders?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          Pragma: 'no-cache',
+        },
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.orders && Array.isArray(data.orders)) {
-          setRowData(data.orders);
+          setRowData([...data.orders]);
         }
       }
     } catch {
       // Ignorar errores transitorios de conexión
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 2500);
-    return () => clearInterval(interval);
-  }, []);
+    const interval = setInterval(fetchOrders, 2000);
+
+    const handleOrderCreated = () => {
+      fetchOrders();
+    };
+    window.addEventListener('order-created', handleOrderCreated);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('order-created', handleOrderCreated);
+    };
+  }, [fetchOrders]);
 
   const columnDefs = useMemo<ColDef<PurchaseOrderDoc>[]>(
     () => [

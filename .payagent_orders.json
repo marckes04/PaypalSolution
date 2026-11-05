@@ -1,5 +1,63 @@
 [
   {
+    "id": "po_1793891074755_3bexh",
+    "prompt": "\"Procure 2 ergonomic keyboards at $60 each for Engineering\"",
+    "department": "Engineering",
+    "currency": "USD",
+    "items": [
+      {
+        "name": "ergonomic keyboards",
+        "quantity": 2,
+        "unitPrice": 60
+      }
+    ],
+    "totalAmount": 120,
+    "status": "APPROVED",
+    "paypalOrderId": null,
+    "approvalUrl": null,
+    "approvalLink": "",
+    "createdAt": "2026-11-05T15:04:34.755Z",
+    "logs": [
+      {
+        "timestamp": "2026-11-05T15:04:34.755Z",
+        "agentStep": "POLICY_EVALUATION",
+        "detail": "Total $120.00 USD is under threshold ($500.00). Straight-Through APPROVED."
+      }
+    ],
+    "auditLog": [
+      "Requisition processed on 2026-11-05T15:04:34.755Z - Dept: Engineering - Total: $120"
+    ]
+  },
+  {
+    "id": "po_1793822038692_bw44t",
+    "prompt": "Procure 2 ergonomic keyboards at $60 each for Engineering",
+    "department": "Engineering",
+    "currency": "USD",
+    "items": [
+      {
+        "name": "ergonomic keyboards",
+        "quantity": 2,
+        "unitPrice": 60
+      }
+    ],
+    "totalAmount": 120,
+    "status": "APPROVED",
+    "paypalOrderId": null,
+    "approvalUrl": null,
+    "approvalLink": "",
+    "createdAt": "2026-11-04T19:53:58.692Z",
+    "logs": [
+      {
+        "timestamp": "2026-11-04T19:53:58.692Z",
+        "agentStep": "POLICY_EVALUATION",
+        "detail": "Total $120.00 USD is under threshold ($500.00). Straight-Through APPROVED."
+      }
+    ],
+    "auditLog": [
+      "Requisition processed on 2026-11-04T19:53:58.692Z - Dept: Engineering - Total: $120"
+    ]
+  },
+  {
     "id": "po_1793806770870_q276o",
     "prompt": "Procure 40 ergonomic keyboards at $60 each for Engineering",
     "department": "Engineering",
