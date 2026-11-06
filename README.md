@@ -60,9 +60,13 @@ PayAgent automates corporate B2B procurement by combining natural language proce
 
 ---
 
+
+In order to check the official document of architecture. See in the following Link. https://docs.google.com/document/d/1eSSgQ76nTmlYjSK0ltXCBDu-zSlkBOWZ6CzBXYZF_2w/edit?tab=t.0#heading=h.2xfzo13iavtj
+
+
 ## 🚀 Getting Started
 
-### 1. Environment Setup
+###  Environment Setup
 Create a `.env.local` file in the root directory:
 
 ```env
@@ -82,7 +86,7 @@ npm run dev
 
 Access the app at http://localhost:3000.
 
-In order to check the official document of architecture. See in the following Link. https://docs.google.com/document/d/1eSSgQ76nTmlYjSK0ltXCBDu-zSlkBOWZ6CzBXYZF_2w/edit?tab=t.0#heading=h.2xfzo13iavtj
+
 
 📄 License
 This project is licensed under the MIT License
