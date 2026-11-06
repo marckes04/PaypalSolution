@@ -21,6 +21,8 @@ In modern enterprises, the traditional B2B procurement cycle (**Procure-to-Pay**
 4. **Human-in-the-Loop (HITL):** Purchases exceeding internal spending thresholds are suspended for one-click executive approval via an interactive **AG Grid** financial dashboard.
 5. **Self-Healing Transactions:** Evaluates PayPal Sandbox error simulation headers (`PayPal-Mock-Response`) to handle declines gracefully before transaction failure.
 
+in order to check the official document of architecture. See in the following Link. https://docs.google.com/document/d/1eSSgQ76nTmlYjSK0ltXCBDu-zSlkBOWZ6CzBXYZF_2w/edit?tab=t.0#heading=h.2xfzo13iavtj
+
 ---
 
 ## 🏆 Target Prize Categories
