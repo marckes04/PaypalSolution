@@ -6,40 +6,117 @@ import ChatInterface from '@/components/chat/ChatInterface';
 import OrdersAgGrid from '@/components/dashboard/OrdersAgGrid';
 import KpiCards from '@/components/dashboard/KpiCards';
 import { ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { PurchaseOrderDoc } from '@/types/order';
+
+const INITIAL_ORDERS: PurchaseOrderDoc[] = [
+  {
+    id: 'po_1794009581',
+    createdAt: '2026-11-07T01:15:00.000Z',
+    department: 'Engineering',
+    totalAmount: 120.0,
+    status: 'APPROVED',
+  },
+  {
+    id: 'po_1794009320',
+    createdAt: '2026-11-07T00:50:00.000Z',
+    department: 'Engineering',
+    totalAmount: 850.0,
+    status: 'PENDING',
+    paypalOrderId: '78B099547L735113U',
+    approvalUrl: 'https://www.sandbox.paypal.com/checkoutnow?token=78B099547L735113U',
+  },
+  {
+    id: 'po_1794009110',
+    createdAt: '2026-11-07T00:20:00.000Z',
+    department: 'Engineering',
+    totalAmount: 400.0,
+    status: 'APPROVED',
+  },
+];
 
 function DashboardContent() {
+  const [orders, setOrders] = useState<PurchaseOrderDoc[]>(INITIAL_ORDERS);
   const [refreshKey, setRefreshKey] = useState(0);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  // Detectar retorno de PayPal Sandbox
+  // 1. Cargar desde localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('payagent_orders');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setOrders(parsed);
+        }
+      }
+    } catch {}
+  }, []);
+
+  // 2. Función unificada para mutar el estado
+  const applyDecision = (orderId: string, status: 'APPROVED' | 'REJECTED') => {
+    setOrders((prev) => {
+      const updated = prev.map((ord) => {
+        if (ord.id === orderId || ord.paypalOrderId === orderId) {
+          return { ...ord, status };
+        }
+        return ord;
+      });
+      try {
+        localStorage.setItem('payagent_orders', JSON.stringify(updated));
+      } catch {}
+      return [...updated]; // Nuevo array para forzar re-render de React
+    });
+
+    setRefreshKey((k) => k + 1);
+
+    if (status === 'APPROVED') {
+      setSuccessBanner(`Order ${orderId} successfully authorized by Procurement Manager.`);
+    } else {
+      setSuccessBanner(`Order ${orderId} rejected by Procurement Policy Override.`);
+    }
+    setTimeout(() => setSuccessBanner(null), 5000);
+  };
+
+  // 3. Escuchar evento global directo por si el callback de AG Grid fue bloqueado
+  useEffect(() => {
+    const handleStatusEvent = (event: any) => {
+      if (event.detail && event.detail.id && event.detail.status) {
+        applyDecision(event.detail.id, event.detail.status);
+      }
+    };
+
+    window.addEventListener('order-status-changed', handleStatusEvent);
+    return () => window.removeEventListener('order-status-changed', handleStatusEvent);
+  }, []);
+
+  // 4. Retorno de PayPal Sandbox en URL
   useEffect(() => {
     if (searchParams.get('approved') === 'true') {
       const ref = searchParams.get('ref') || 'Processed';
-      
-      // 1. Forzar refresco inmediato de KPIs y AG Grid
-      setRefreshKey((prev) => prev + 1);
-      
-      // 2. Mostrar banner de éxito temporal
-      setSuccessBanner(`Order successfully authorized via PayPal Sandbox (Ref: ${ref})`);
-      const timer = setTimeout(() => setSuccessBanner(null), 6000);
-
-      // 3. Limpiar la URL sin recargar la página
+      applyDecision(ref, 'APPROVED');
       router.replace('/', { scroll: false });
-
-      return () => clearTimeout(timer);
     }
   }, [searchParams, router]);
 
-  const handleOrderCreated = () => {
+  // 5. Creación de orden desde el Chat
+  const handleOrderCreated = (newOrder?: any) => {
+    if (newOrder && newOrder.id) {
+      setOrders((prev) => {
+        const updated = [newOrder, ...prev.filter((o) => o.id !== newOrder.id)];
+        try {
+          localStorage.setItem('payagent_orders', JSON.stringify(updated));
+        } catch {}
+        return [...updated];
+      });
+    }
     setRefreshKey((prev) => prev + 1);
   };
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
-      {/* Top Navigation */}
       <header className="h-16 border-b border-zinc-800 px-6 flex items-center justify-between bg-zinc-950/80 backdrop-blur sticky top-0 z-50">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center font-bold text-white shadow-lg shadow-sky-600/30">
@@ -58,7 +135,6 @@ function DashboardContent() {
         </div>
       </header>
 
-      {/* Banner de confirmación post-aprobación */}
       {successBanner && (
         <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-6 py-2.5 flex items-center gap-2 text-xs font-medium text-emerald-400 transition-all">
           <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
@@ -66,18 +142,19 @@ function DashboardContent() {
         </div>
       )}
 
-      {/* Main Workspace */}
       <div className="flex-1 p-6 flex flex-col max-w-[1800px] w-full mx-auto">
-        {/* Real-Time Governance & Financial KPIs */}
-        <KpiCards key={`kpi-${refreshKey}`} />
+        <KpiCards key={`kpi-${refreshKey}`} orders={orders} />
 
-        {/* Main Split Grid */}
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[640px] h-[calc(100vh-16rem)]">
           <div className="lg:col-span-5 h-full">
             <ChatInterface onOrderCreated={handleOrderCreated} />
           </div>
           <div className="lg:col-span-7 h-full">
-            <OrdersAgGrid key={`grid-${refreshKey}`} refreshTrigger={refreshKey} />
+            <OrdersAgGrid
+              key={`grid-${refreshKey}`}
+              orders={orders}
+              onAction={applyDecision}
+            />
           </div>
         </div>
       </div>

@@ -1,14 +1,15 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import {
   ColDef,
   ModuleRegistry,
   AllCommunityModule,
   themeQuartz,
+  ICellRendererParams,
 } from 'ag-grid-community';
-import { ExternalLink, CheckCircle2, Clock } from 'lucide-react';
+import { ExternalLink, CheckCircle2, Clock, XCircle, Check, X } from 'lucide-react';
 import { PurchaseOrderDoc } from '@/types/order';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -23,78 +24,31 @@ const customDarkTheme = themeQuartz.withParams({
   rowHoverColor: '#27272a',
 });
 
-// Datos base fijos con marcas de tiempo estáticas
-const BASE_FIXED_ORDERS: PurchaseOrderDoc[] = [
-  {
-    id: 'po_1794009581',
-    createdAt: '2026-11-07T01:15:00.000Z',
-    department: 'Engineering',
-    totalAmount: 120.0,
-    status: 'APPROVED',
-  },
-  {
-    id: 'po_1794009320',
-    createdAt: '2026-11-07T00:50:00.000Z',
-    department: 'Engineering',
-    totalAmount: 850.0,
-    status: 'PENDING',
-    paypalOrderId: '78B099547L735113U',
-    approvalUrl: 'https://www.sandbox.paypal.com/checkoutnow?token=78B099547L735113U',
-  },
-  {
-    id: 'po_1794009110',
-    createdAt: '2026-11-07T00:20:00.000Z',
-    department: 'Engineering',
-    totalAmount: 400.0,
-    status: 'APPROVED',
-  },
-];
-
 interface OrdersAgGridProps {
-  refreshTrigger?: number;
+  orders?: PurchaseOrderDoc[];
+  onAction?: (orderId: string, action: 'APPROVED' | 'REJECTED') => void;
 }
 
-export default function OrdersAgGrid({ refreshTrigger }: OrdersAgGridProps) {
-  const [rowData, setRowData] = useState<PurchaseOrderDoc[]>(BASE_FIXED_ORDERS);
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-
-    // Cargar historial persistido sin modificar registros base
-    try {
-      const stored = localStorage.getItem('payagent_orders');
-      if (stored) {
-        const parsed: PurchaseOrderDoc[] = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const map = new Map<string, PurchaseOrderDoc>();
-          BASE_FIXED_ORDERS.forEach((o) => map.set(o.id, o));
-          parsed.forEach((o) => map.set(o.id, o));
-          setRowData(Array.from(map.values()));
-        }
+export default function OrdersAgGrid({ orders = [], onAction }: OrdersAgGridProps) {
+  const triggerDecision = useCallback(
+    (orderId: string, action: 'APPROVED' | 'REJECTED') => {
+      // 1. Ejecutar callback del padre si existe
+      if (onAction) {
+        onAction(orderId, action);
       }
-    } catch {}
+      // 2. Disparar evento global para garantizar captura
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('order-status-changed', {
+            detail: { id: orderId, status: action },
+          })
+        );
+      }
+    },
+    [onAction]
+  );
 
-    // Inserción fija e inmediata al disparar orden desde el chat
-    const handleAddOrder = (event: any) => {
-      if (!event.detail) return;
-      const newOrder: PurchaseOrderDoc = event.detail;
-
-      setRowData((currentRows) => {
-        const filtered = currentRows.filter((o) => o.id !== newOrder.id);
-        const updated = [newOrder, ...filtered];
-        try {
-          localStorage.setItem('payagent_orders', JSON.stringify(updated));
-        } catch {}
-        return updated;
-      });
-    };
-
-    window.addEventListener('order-created', handleAddOrder);
-    return () => {
-      window.removeEventListener('order-created', handleAddOrder);
-    };
-  }, [refreshTrigger]);
+  const gridContext = useMemo(() => ({ triggerDecision }), [triggerDecision]);
 
   const columnDefs = useMemo<ColDef<PurchaseOrderDoc>[]>(
     () => [
@@ -149,6 +103,13 @@ export default function OrdersAgGrid({ refreshTrigger }: OrdersAgGridProps) {
               </span>
             );
           }
+          if (status === 'REJECTED') {
+            return (
+              <span className="inline-flex items-center gap-1.5 text-rose-400 text-xs font-medium">
+                <XCircle size={13} /> REJECTED
+              </span>
+            );
+          }
           return (
             <span className="inline-flex items-center gap-1.5 text-amber-400 text-xs font-medium">
               <Clock size={13} /> PENDING
@@ -163,47 +124,60 @@ export default function OrdersAgGrid({ refreshTrigger }: OrdersAgGridProps) {
         cellRenderer: (params: any) => {
           if (!params.value) return <span className="text-zinc-600">-</span>;
           return (
-            <a
-              href={`https://www.sandbox.paypal.com/checkoutnow?token=${params.value}`}
-              target="_blank"
-              rel="noreferrer"
-              className="font-mono text-xs text-sky-400 hover:text-sky-300 underline inline-flex items-center gap-1"
-            >
+            <span className="font-mono text-xs text-sky-400 inline-flex items-center gap-1">
               {params.value} <ExternalLink size={10} />
-            </a>
+            </span>
           );
         },
       },
       {
         headerName: 'HITL Action',
-        field: 'approvalUrl',
-        flex: 1.2,
-        cellRenderer: (params: any) => {
-          const order = params.data as PurchaseOrderDoc;
+        field: 'id',
+        flex: 1.4,
+        cellRenderer: (params: ICellRendererParams<PurchaseOrderDoc>) => {
+          const order = params.data;
+          if (!order) return null;
 
-          if (order?.status === 'APPROVED') {
-            return <span className="text-emerald-500/80 text-xs">Authorized</span>;
+          if (order.status === 'APPROVED') {
+            return <span className="text-emerald-500/80 text-xs font-medium">Authorized</span>;
           }
 
-          const url =
-            order?.approvalUrl ||
-            (order?.paypalOrderId
-              ? `https://www.sandbox.paypal.com/checkoutnow?token=${order.paypalOrderId}`
-              : null);
+          if (order.status === 'REJECTED') {
+            return <span className="text-rose-500/80 text-xs font-medium">Declined</span>;
+          }
 
           const isPending =
-            order?.status === 'PENDING' || order?.status === 'PENDING_APPROVAL';
+            order.status === 'PENDING' || order.status === 'PENDING_APPROVAL';
 
-          if (url && isPending) {
+          if (isPending) {
             return (
-              <a
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs font-semibold text-amber-400 hover:text-amber-300 underline"
+              <div
+                className="flex items-center gap-2 h-full py-1"
+                onClick={(e) => e.stopPropagation()} // Previene que AG Grid consuma el evento
               >
-                Authorize <ExternalLink size={12} />
-              </a>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    params.context.triggerDecision(order.id, 'APPROVED');
+                  }}
+                  className="px-2.5 py-1 bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40 rounded text-[11px] font-semibold inline-flex items-center gap-1 transition-all cursor-pointer shadow-sm active:scale-95"
+                >
+                  <Check size={12} /> Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    params.context.triggerDecision(order.id, 'REJECTED');
+                  }}
+                  className="px-2 py-1 bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 border border-rose-500/40 rounded text-[11px] font-semibold inline-flex items-center gap-1 transition-all cursor-pointer shadow-sm active:scale-95"
+                >
+                  <X size={12} /> Reject
+                </button>
+              </div>
             );
           }
 
@@ -225,15 +199,16 @@ export default function OrdersAgGrid({ refreshTrigger }: OrdersAgGridProps) {
           suppressHydrationWarning
           className="text-xs text-zinc-400 bg-zinc-800/80 px-2.5 py-1 rounded-md border border-zinc-700/50"
         >
-          {isMounted ? rowData.length : BASE_FIXED_ORDERS.length} Records
+          {orders.length} Records
         </span>
       </div>
 
       <div className="flex-1 w-full h-full">
         <AgGridReact
           theme={customDarkTheme}
-          rowData={rowData}
+          rowData={orders}
           columnDefs={columnDefs}
+          context={gridContext}
           defaultColDef={{
             sortable: true,
             filter: true,

@@ -1,146 +1,58 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Send, Bot, User, Clock } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Send, Bot, User, Loader2 } from 'lucide-react';
 
-interface ChatMessage {
+interface Message {
   id: string;
-  role: 'user' | 'assistant';
-  content: string;
+  sender: 'user' | 'bot';
+  text: string;
   timestamp: string;
 }
 
 interface ChatInterfaceProps {
-  onOrderCreated?: () => void;
+  onOrderCreated?: (order?: any) => void;
 }
 
-// Markdown-Parser para formato de texto, links, código y viñetas
-function FormattedMessage({ content }: { content: string }) {
-  const lines = content.split('\n');
-
-  return (
-    <div className="space-y-1.5 leading-relaxed">
-      {lines.map((line, lineIdx) => {
-        if (!line.trim()) return <div key={lineIdx} className="h-2" />;
-
-        const formatInline = (text: string) => {
-          const parts = text.split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|`[^`]+`)/g);
-
-          return parts.map((part, partIdx) => {
-            const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-            if (linkMatch) {
-              return (
-                <a
-                  key={partIdx}
-                  href={linkMatch[2]}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sky-400 hover:text-sky-300 underline font-medium break-all"
-                >
-                  {linkMatch[1]}
-                </a>
-              );
-            }
-
-            if (part.startsWith('**') && part.endsWith('**')) {
-              return (
-                <strong key={partIdx} className="font-semibold text-zinc-100">
-                  {part.slice(2, -2)}
-                </strong>
-              );
-            }
-
-            if (part.startsWith('`') && part.endsWith('`')) {
-              return (
-                <code
-                  key={partIdx}
-                  className="font-mono text-xs bg-zinc-900 border border-zinc-700/80 px-1.5 py-0.5 rounded text-sky-300"
-                >
-                  {part.slice(1, -1)}
-                </code>
-              );
-            }
-
-            return part;
-          });
-        };
-
-        if (line.trim().startsWith('•') || line.trim().startsWith('-')) {
-          const itemText = line.trim().replace(/^[•\-]\s*/, '');
-          return (
-            <div key={lineIdx} className="flex items-start gap-2 pl-1 text-zinc-300">
-              <span className="text-sky-400 text-xs mt-1">•</span>
-              <span>{formatInline(itemText)}</span>
-            </div>
-          );
-        }
-
-        return <p key={lineIdx}>{formatInline(line)}</p>;
-      })}
-    </div>
-  );
-}
-
-export function ChatInterface({ onOrderCreated }: ChatInterfaceProps) {
-  const [selectedDept, setSelectedDept] = useState('Engineering');
+export default function ChatInterface({ onOrderCreated }: ChatInterfaceProps) {
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: 'msg_welcome',
+      sender: 'bot',
+      text: "Please provide a valid procurement request. Example: 'Procure 2 ergonomic keyboards at $60 each for Engineering'.",
+      timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }),
+    },
+  ]);
   const [input, setInput] = useState('');
+  const [department, setDepartment] = useState('Engineering');
   const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const formatCurrentTime = () => {
-    return new Date().toLocaleString('en-US', {
-      dateStyle: 'short',
-      timeStyle: 'medium',
-    });
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, loading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const query = input.trim();
-    if (!query || loading) return;
+    const trimmedInput = input.trim();
+    if (!trimmedInput || loading) return;
 
-    // =========================================================================
-    // REGLA DE GOBERNANZA: VALIDACIÓN CONTEXTUAL DE DEPARTAMENTO
-    // =========================================================================
-    const validDepts = ['marketing', 'engineering', 'operations', 'executive', 'sales', 'finance', 'hr'];
-    const forMatch = query.match(/\b(?:for|to|para)\s+([a-zA-Z]+)\b/i);
+    const userTimestamp = new Date().toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
 
-    if (forMatch && forMatch[1]) {
-      const requestedDept = forMatch[1].trim().toLowerCase();
-      const currentDept = selectedDept.trim().toLowerCase();
-
-      if (validDepts.includes(requestedDept) && requestedDept !== currentDept) {
-        const capitalRequestedDept = forMatch[1].charAt(0).toUpperCase() + forMatch[1].slice(1);
-        const warningContent = `⚠️ Policy Mismatch: You requested supplies for **${capitalRequestedDept}**, but your active workspace is set to **${selectedDept}**. Please switch the department selector to ${capitalRequestedDept} before submitting this requisition.`;
-
-        // Registramos el mensaje del usuario y la advertencia en pantalla sin llamar a la API
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            role: 'user',
-            content: `[Dept: ${selectedDept}] ${query}`,
-            timestamp: formatCurrentTime(),
-          },
-          {
-            id: (Date.now() + 1).toString(),
-            role: 'assistant',
-            content: warningContent,
-            timestamp: formatCurrentTime(),
-          },
-        ]);
-
-        setInput('');
-        return; // DETIENE EL FLUJO: No aprueba, no llama a PayPal, no toca la base de datos
-      }
-    }
-    // =========================================================================
-
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: `[Dept: ${selectedDept}] ${query}`,
-      timestamp: formatCurrentTime(),
+    const userMessage: Message = {
+      id: `usr_${Date.now()}`,
+      sender: 'user',
+      text: `[Dept: ${department}] ${trimmedInput}`,
+      timestamp: userTimestamp,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -152,180 +64,154 @@ export function ChatInterface({ onOrderCreated }: ChatInterfaceProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: query,
-          department: selectedDept,
-          messages: [...messages, userMessage].map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
+          message: trimmedInput,
+          department: department,
         }),
       });
 
-      if (!res.ok) throw new Error('Failed to communicate with PayAgent');
+      const data = await res.json();
+      const botTimestamp = new Date().toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      });
 
-      const contentType = res.headers.get('content-type') || '';
-      let assistantText = '';
-      const assistantMessageId = (Date.now() + 1).toString();
-      const assistantTimestamp = formatCurrentTime();
+      const botMessage: Message = {
+        id: `bot_${Date.now()}`,
+        sender: 'bot',
+        text: data.reply || 'Request received and evaluated.',
+        timestamp: botTimestamp,
+      };
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: assistantMessageId,
-          role: 'assistant',
-          content: '',
-          timestamp: assistantTimestamp,
-        },
-      ]);
+      setMessages((prev) => [...prev, botMessage]);
 
-      // Soporte híbrido: Si el backend responde Stream o si responde JSON
-      if (contentType.includes('application/json')) {
-        const data = await res.json();
-        assistantText = data.reply || data.message || data.response || 'Requisition processed.';
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMessageId ? { ...msg, content: assistantText } : msg
-          )
-        );
-
-        // Notificar a AG Grid y KPI Cards para que se refresquen si se procesó una orden
-        if (data.success && onOrderCreated) {
-          onOrderCreated();
+      // INYECCIÓN INMEDIATA A AG GRID Y KPIS
+      if (data.order) {
+        if (onOrderCreated) {
+          onOrderCreated(data.order);
         }
-      } else {
-        const reader = res.body?.getReader();
-        const decoder = new TextDecoder();
-
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, { stream: true });
-            assistantText += chunk;
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === assistantMessageId ? { ...msg, content: assistantText } : msg
-              )
-            );
-          }
-
-          // Notificar tras terminar el streaming
-          if (onOrderCreated) {
-            onOrderCreated();
-          }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('order-created', {
+              detail: data.order,
+            })
+          );
         }
       }
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 2).toString(),
-          role: 'assistant',
-          content: 'Sorry, an error occurred while processing your requisition.',
-          timestamp: formatCurrentTime(),
-        },
-      ]);
+    } catch (err) {
+      console.error('[CHAT_SUBMIT_ERROR]:', err);
+      const errorMessage: Message = {
+        id: `bot_err_${Date.now()}`,
+        sender: 'bot',
+        text: 'Error processing requisition. Please verify connection and retry.',
+        timestamp: new Date().toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true,
+        }),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
+    <div className="h-[600px] w-full flex flex-col bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-xl">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/60 backdrop-blur">
+      <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900">
         <div className="flex items-center gap-2">
-          <Bot className="w-5 h-5 text-sky-400" />
-          <h2 className="font-semibold text-zinc-100">PayAgent Assistant</h2>
+          <Bot className="text-sky-400" size={18} />
+          <h2 className="text-sm font-semibold text-zinc-100">PayAgent Assistant</h2>
         </div>
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-zinc-400">Dept:</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-zinc-400">Dept:</span>
           <select
-            value={selectedDept}
-            onChange={(e) => setSelectedDept(e.target.value)}
-            className="bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded px-2 py-1 outline-none focus:border-sky-500"
+            value={department}
+            onChange={(e) => setDepartment(e.target.value)}
+            className="bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-lg px-2.5 py-1 focus:outline-none focus:border-sky-500"
           >
             <option value="Engineering">Engineering</option>
             <option value="Marketing">Marketing</option>
+            <option value="Sales">Sales</option>
             <option value="Operations">Operations</option>
-            <option value="Executive">Executive</option>
           </select>
         </div>
       </div>
 
-      {/* Message List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-500 text-sm text-center px-4">
-            <p>Welcome to PayAgent. Describe the supplies, services, or equipment you need to procure.</p>
-          </div>
-        ) : (
-          messages.map((m) => {
-            const isUser = m.role === 'user';
-            return (
+      {/* Messages Viewport */}
+      <div className="flex-1 p-4 overflow-y-auto space-y-4">
+        {messages.map((msg) => {
+          const isUser = msg.sender === 'user';
+          return (
+            <div
+              key={msg.id}
+              className={`flex items-start gap-2.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+            >
               <div
-                key={m.id}
-                className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
+                className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs ${
+                  isUser ? 'bg-zinc-800 text-zinc-300' : 'bg-sky-950/60 text-sky-400 border border-sky-800/40'
+                }`}
               >
-                {!isUser && (
-                  <div className="w-7 h-7 rounded-full bg-sky-950 border border-sky-600/50 flex items-center justify-center shrink-0">
-                    <Bot className="w-4 h-4 text-sky-400" />
-                  </div>
-                )}
+                {isUser ? <User size={14} /> : <Bot size={14} />}
+              </div>
 
+              <div
+                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
+                  isUser
+                    ? 'bg-sky-600 text-white rounded-tr-none'
+                    : 'bg-zinc-800/90 text-zinc-200 rounded-tl-none border border-zinc-700/40'
+                }`}
+              >
+                <p className="whitespace-pre-wrap">{msg.text}</p>
                 <div
-                  className={`max-w-[85%] rounded-xl px-4 py-3 text-sm flex flex-col justify-between ${
-                    isUser
-                      ? 'bg-sky-600 text-white rounded-tr-none'
-                      : 'bg-zinc-800 border border-zinc-700/60 text-zinc-200 rounded-tl-none'
+                  className={`mt-1.5 flex items-center gap-1 text-[10px] ${
+                    isUser ? 'text-sky-200 justify-end' : 'text-zinc-500'
                   }`}
                 >
-                  <FormattedMessage content={m.content} />
-
-                  <div
-                    className={`mt-2.5 pt-1.5 border-t text-[10px] flex items-center gap-1 ${
-                      isUser
-                        ? 'border-sky-500/40 text-sky-100 justify-end'
-                        : 'border-zinc-700/60 text-zinc-400 justify-start'
-                    }`}
-                  >
-                    <Clock className="w-2.5 h-2.5" />
-                    <span>{m.timestamp}</span>
-                  </div>
+                  <span>🕒 {msg.timestamp}</span>
                 </div>
-
-                {isUser && (
-                  <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0">
-                    <User className="w-4 h-4 text-zinc-400" />
-                  </div>
-                )}
               </div>
-            );
-          })
+            </div>
+          );
+        })}
+
+        {loading && (
+          <div className="flex items-start gap-2.5">
+            <div className="w-7 h-7 rounded-full bg-sky-950/60 text-sky-400 border border-sky-800/40 flex items-center justify-center shrink-0">
+              <Bot size={14} />
+            </div>
+            <div className="bg-zinc-800/90 rounded-2xl rounded-tl-none px-4 py-2.5 border border-zinc-700/40 flex items-center gap-2 text-xs text-zinc-400">
+              <Loader2 className="animate-spin text-sky-400" size={14} />
+              Evaluating requisition policies &amp; limits...
+            </div>
+          </div>
         )}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input Field */}
-      <form onSubmit={handleSubmit} className="p-4 border-t border-zinc-800 bg-zinc-900/80">
-        <div className="flex items-center gap-2">
+      <form onSubmit={handleSubmit} className="p-3 border-t border-zinc-800 bg-zinc-900/60">
+        <div className="relative flex items-center">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={`Submit requisition for ${selectedDept}...`}
-            className="flex-1 bg-zinc-800 border border-zinc-700/80 rounded-lg px-4 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-sky-500 transition-colors"
+            placeholder={`Submit requisition for ${department}...`}
+            disabled={loading}
+            className="w-full bg-zinc-950/80 border border-zinc-800 rounded-xl pl-4 pr-11 py-2.5 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-sky-500 transition-colors disabled:opacity-50"
           />
           <button
             type="submit"
-            disabled={loading || !input.trim()}
-            className="bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white p-2.5 rounded-lg transition-colors"
+            disabled={!input.trim() || loading}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-40 disabled:hover:bg-sky-600 text-white flex items-center justify-center transition-colors shadow-md shadow-sky-600/20"
           >
-            <Send className="w-4 h-4" />
+            <Send size={13} />
           </button>
         </div>
       </form>
     </div>
   );
 }
-
-export default ChatInterface;
