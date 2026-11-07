@@ -23,51 +23,106 @@ const customDarkTheme = themeQuartz.withParams({
   rowHoverColor: '#27272a',
 });
 
-export default function OrdersAgGrid() {
-  const [rowData, setRowData] = useState<PurchaseOrderDoc[]>([]);
+const SEED_DATA: PurchaseOrderDoc[] = [
+  {
+    id: 'po_demo_01',
+    createdAt: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
+    department: 'Engineering',
+    totalAmount: 120.0,
+    status: 'APPROVED',
+  },
+  {
+    id: 'po_demo_02',
+    createdAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+    department: 'Engineering',
+    totalAmount: 850.0,
+    status: 'PENDING',
+    paypalOrderId: '78B099547L735113U',
+    approvalUrl: 'https://www.sandbox.paypal.com/checkoutnow?token=78B099547L735113U',
+  },
+];
 
-  const fetchOrders = useCallback(async () => {
+interface OrdersAgGridProps {
+  refreshTrigger?: number;
+}
+
+export default function OrdersAgGrid({ refreshTrigger }: OrdersAgGridProps) {
+  const [rowData, setRowData] = useState<PurchaseOrderDoc[]>(SEED_DATA);
+  const [isMounted, setIsMounted] = useState(false);
+
+  const loadAndSyncOrders = useCallback(async () => {
+    let localData: PurchaseOrderDoc[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('payagent_orders');
+        if (stored) localData = JSON.parse(stored);
+      } catch {}
+    }
+
     try {
-      const res = await fetch(`/api/orders?t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache',
-          Pragma: 'no-cache',
-        },
-      });
+      const res = await fetch(`/api/orders?t=${Date.now()}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        const apiList: PurchaseOrderDoc[] = Array.isArray(data) ? data : data.orders || [];
 
-      if (!res.ok) return;
+        const map = new Map<string, PurchaseOrderDoc>();
+        SEED_DATA.forEach((item) => map.set(item.id, item));
+        localData.forEach((item) => map.set(item.id, item));
+        apiList.forEach((item) => map.set(item.id, item));
 
-      const data = await res.json();
-      let list: PurchaseOrderDoc[] = [];
+        const merged = Array.from(map.values()).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
 
-      if (Array.isArray(data)) {
-        list = data;
-      } else if (data && Array.isArray(data.orders)) {
-        list = data.orders;
+        setRowData(merged);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('payagent_orders', JSON.stringify(merged));
+        }
+        return;
       }
+    } catch {}
 
-      setRowData(list);
-    } catch (err) {
-      console.error('[AG_GRID_FETCH_ERROR]:', err);
+    if (localData.length > 0) {
+      setRowData(localData);
+    } else {
+      setRowData(SEED_DATA);
     }
   }, []);
 
   useEffect(() => {
-    fetchOrders();
-    const interval = setInterval(fetchOrders, 1500);
+    setIsMounted(true);
 
-    const onOrderCreated = () => {
-      setTimeout(fetchOrders, 300);
+    try {
+      const stored = localStorage.getItem('payagent_orders');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setRowData(parsed);
+        }
+      }
+    } catch {}
+
+    loadAndSyncOrders();
+    const interval = setInterval(loadAndSyncOrders, 2500);
+
+    const onOrderCreated = (event: any) => {
+      if (event.detail && typeof window !== 'undefined') {
+        const newOrder: PurchaseOrderDoc = event.detail;
+        setRowData((prev) => {
+          const updated = [newOrder, ...prev.filter((o) => o.id !== newOrder.id)];
+          localStorage.setItem('payagent_orders', JSON.stringify(updated));
+          return updated;
+        });
+      }
+      loadAndSyncOrders();
     };
 
     window.addEventListener('order-created', onOrderCreated);
-
     return () => {
       clearInterval(interval);
       window.removeEventListener('order-created', onOrderCreated);
     };
-  }, [fetchOrders]);
+  }, [loadAndSyncOrders, refreshTrigger]);
 
   const columnDefs = useMemo<ColDef<PurchaseOrderDoc>[]>(
     () => [
@@ -194,8 +249,11 @@ export default function OrdersAgGrid() {
           <h2 className="text-sm font-semibold text-zinc-100">Live Procurement Ledger</h2>
           <p className="text-xs text-zinc-500">Real-time AG Grid sync with PayPal Sandbox &amp; Firestore</p>
         </div>
-        <span className="text-xs text-zinc-400 bg-zinc-800/80 px-2.5 py-1 rounded-md border border-zinc-700/50">
-          {rowData.length} Records
+        <span
+          suppressHydrationWarning
+          className="text-xs text-zinc-400 bg-zinc-800/80 px-2.5 py-1 rounded-md border border-zinc-700/50"
+        >
+          {isMounted ? rowData.length : SEED_DATA.length} Records
         </span>
       </div>
 
