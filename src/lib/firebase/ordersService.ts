@@ -3,7 +3,6 @@ import { PurchaseOrderDoc, OrderStatus } from '@/types/order';
 const PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'solution-345c8';
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/purchase_orders`;
 
-// Convertir un objeto normal a formato de campos de Firestore REST
 function toFirestoreFields(obj: any): any {
   const fields: any = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -31,7 +30,6 @@ function toFirestoreFields(obj: any): any {
   return fields;
 }
 
-// Convertir los campos de Firestore REST a un objeto JavaScript normal
 function fromFirestoreFields(fields: any): any {
   const result: any = {};
   if (!fields) return result;
@@ -75,9 +73,7 @@ export async function savePurchaseOrder(orderData: Omit<PurchaseOrderDoc, 'id'>)
     }
 
     const data = await res.json();
-    // Extraer el ID generado del nombre del documento ("projects/.../documents/purchase_orders/ID")
-    const generatedId = data.name ? data.name.split('/').pop() : `PO-${Date.now()}`;
-    return generatedId;
+    return data.name ? data.name.split('/').pop() : `PO-${Date.now()}`;
   } catch (err) {
     console.error('[SAVE_ORDER_EXCEPTION]', err);
     throw err;
@@ -85,31 +81,72 @@ export async function savePurchaseOrder(orderData: Omit<PurchaseOrderDoc, 'id'>)
 }
 
 export async function updateOrderStatus(
-  id: string,
-  status: OrderStatus,
-  paypalOrderId?: string
-): Promise<void> {
+  identifier: string,
+  status: OrderStatus = 'APPROVED'
+): Promise<boolean> {
   try {
-    const updateMask = paypalOrderId
-      ? 'updateMask.fieldPaths=status&updateMask.fieldPaths=paypalOrderId'
-      : 'updateMask.fieldPaths=status';
+    console.log(`[UPDATE_ATTEMPT] Looking for order matching token/id: "${identifier}"`);
 
-    const fieldsToUpdate: any = { status };
-    if (paypalOrderId) fieldsToUpdate.paypalOrderId = paypalOrderId;
+    // 1. Fetch current purchase orders
+    const res = await fetch(`${BASE_URL}?pageSize=100`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
 
-    await fetch(`${BASE_URL}/${id}?${updateMask}`, {
+    if (!res.ok) {
+      console.error('[FIRESTORE_GET_FAIL]', res.status, await res.text());
+      return false;
+    }
+
+    const data = await res.json();
+    const documents = data.documents || [];
+
+    // Match by document ID or paypalOrderId or approvalUrl containing token
+    const targetDoc = documents.find((doc: any) => {
+      const docId = doc.name ? doc.name.split('/').pop() : '';
+      const orderToken = doc.fields?.paypalOrderId?.stringValue;
+      const approvalUrl = doc.fields?.approvalUrl?.stringValue || '';
+      return docId === identifier || orderToken === identifier || approvalUrl.includes(identifier);
+    });
+
+    if (!targetDoc) {
+      console.warn(`[FIRESTORE_UPDATE_WARN] No matching document for "${identifier}" across ${documents.length} docs`);
+      return false;
+    }
+
+    const docId = targetDoc.name.split('/').pop();
+    console.log(`[UPDATE_TARGET_FOUND] Matching doc ID: ${docId}`);
+
+    // 2. Patch status field only using updateMask
+    const patchUrl = `${BASE_URL}/${docId}?updateMask.fieldPaths=status`;
+    const patchRes = await fetch(patchUrl, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fields: toFirestoreFields(fieldsToUpdate) }),
+      body: JSON.stringify({
+        fields: {
+          status: { stringValue: status }
+        }
+      }),
+      cache: 'no-store',
     });
+
+    if (!patchRes.ok) {
+      const patchErr = await patchRes.text();
+      console.error('[FIRESTORE_PATCH_ERROR]', patchRes.status, patchErr);
+      return false;
+    }
+
+    console.log(`[FIRESTORE_UPDATE_SUCCESS] Document ${docId} successfully updated to ${status}`);
+    return true;
   } catch (err) {
     console.error('[UPDATE_ORDER_EXCEPTION]', err);
+    return false;
   }
 }
 
 export async function getPurchaseOrders(): Promise<PurchaseOrderDoc[]> {
   try {
-    const res = await fetch(`${BASE_URL}?pageSize=50`, {
+    const res = await fetch(`${BASE_URL}?pageSize=100`, {
       cache: 'no-store',
       headers: { 'Cache-Control': 'no-cache' },
     });
@@ -133,9 +170,7 @@ export async function getPurchaseOrders(): Promise<PurchaseOrderDoc[]> {
       } as PurchaseOrderDoc;
     });
 
-    // Ordenar de más reciente a más antiguo
     orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
     return orders;
   } catch (err) {
     console.error('[GET_ORDERS_EXCEPTION]', err);

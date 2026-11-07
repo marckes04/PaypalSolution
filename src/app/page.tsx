@@ -1,13 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import ChatInterface from '@/components/chat/ChatInterface';
 import OrdersAgGrid from '@/components/dashboard/OrdersAgGrid';
 import KpiCards from '@/components/dashboard/KpiCards';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, CheckCircle2 } from 'lucide-react';
 
-export default function Home() {
+function DashboardContent() {
   const [refreshKey, setRefreshKey] = useState(0);
+  const [successBanner, setSuccessBanner] = useState<string | null>(null);
+
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Detectar retorno de PayPal Sandbox
+  useEffect(() => {
+    if (searchParams.get('approved') === 'true') {
+      const ref = searchParams.get('ref') || 'Processed';
+      
+      // 1. Forzar refresco inmediato de KPIs y AG Grid
+      setRefreshKey((prev) => prev + 1);
+      
+      // 2. Mostrar banner de éxito temporal
+      setSuccessBanner(`Order successfully authorized via PayPal Sandbox (Ref: ${ref})`);
+      const timer = setTimeout(() => setSuccessBanner(null), 6000);
+
+      // 3. Limpiar la URL sin recargar la página
+      router.replace('/', { scroll: false });
+
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams, router]);
 
   const handleOrderCreated = () => {
     setRefreshKey((prev) => prev + 1);
@@ -34,6 +58,14 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Banner de confirmación post-aprobación */}
+      {successBanner && (
+        <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-6 py-2.5 flex items-center gap-2 text-xs font-medium text-emerald-400 transition-all">
+          <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+          <span>{successBanner}</span>
+        </div>
+      )}
+
       {/* Main Workspace */}
       <div className="flex-1 p-6 flex flex-col max-w-[1800px] w-full mx-auto">
         {/* Real-Time Governance & Financial KPIs */}
@@ -50,5 +82,13 @@ export default function Home() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-zinc-950" />}>
+      <DashboardContent />
+    </Suspense>
   );
 }

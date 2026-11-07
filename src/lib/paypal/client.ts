@@ -1,90 +1,101 @@
-const PAYPAL_API_BASE =
-  process.env.PAYPAL_API_BASE || 'https://api-m.sandbox.paypal.com';
-
 export class PayPalClient {
   private clientId: string;
   private clientSecret: string;
+  private baseUrl: string;
 
   constructor() {
     this.clientId = process.env.PAYPAL_CLIENT_ID || '';
     this.clientSecret = process.env.PAYPAL_CLIENT_SECRET || '';
+    this.baseUrl = process.env.PAYPAL_API_BASE || 'https://api-m.sandbox.paypal.com';
   }
 
-  async getAccessToken(): Promise<string> {
-    if (!this.clientId || !this.clientSecret) {
-      throw new Error('Missing PayPal credentials in environment variables.');
-    }
-
-    const basicAuth = Buffer.from(
-      `${this.clientId}:${this.clientSecret}`
-    ).toString('base64');
-
-    const res = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
+  private async getAccessToken(): Promise<string> {
+    const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
+    const response = await fetch(`${this.baseUrl}/v1/oauth2/token`, {
       method: 'POST',
       headers: {
-        Authorization: `Basic ${basicAuth}`,
+        Authorization: `Basic ${auth}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: 'grant_type=client_credentials',
+      cache: 'no-store',
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`PayPal Auth failed (${res.status}): ${err}`);
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`PayPal Auth Failed: ${err}`);
     }
 
-    const data = await res.json();
+    const data = await response.json();
     return data.access_token;
   }
 
   async createOrder(
     amount: number,
-    currency: string = 'USD',
-    description: string = 'PayAgent Purchase Requisition'
+    currency = 'USD',
+    description = 'Requisition Order',
+    internalOrderId = ''
   ) {
-    const accessToken = await this.getAccessToken();
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const token = await this.getAccessToken();
+    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-    const res = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders`, {
+    // Se concatena el orderId interno directamente en los parámetros de retorno
+    const returnUrl = internalOrderId
+      ? `${appBaseUrl}/api/paypal/capture?orderId=${internalOrderId}`
+      : `${appBaseUrl}/api/paypal/capture`;
+
+    const payload = {
+      intent: 'CAPTURE',
+      purchase_units: [
+        {
+          description: description.slice(0, 127),
+          amount: {
+            currency_code: currency,
+            value: amount.toFixed(2),
+          },
+        },
+      ],
+      application_context: {
+        brand_name: 'PayAgent Procurement',
+        landing_page: 'LOGIN',
+        user_action: 'PAY_NOW',
+        return_url: returnUrl,
+        cancel_url: `${appBaseUrl}/?canceled=true`,
+      },
+    };
+
+    const response = await fetch(`${this.baseUrl}/v2/checkout/orders`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        intent: 'CAPTURE',
-        purchase_units: [
-          {
-            description,
-            amount: {
-              currency_code: currency,
-              value: Number(amount).toFixed(2),
-            },
-          },
-        ],
-        application_context: {
-          return_url: `${appUrl}/api/paypal/capture`,
-          cancel_url: `${appUrl}/dashboard`,
-          brand_name: 'PayAgent Copilot',
-          user_action: 'PAY_NOW',
-        },
-      }),
+      body: JSON.stringify(payload),
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`PayPal createOrder failed (${res.status}): ${err}`);
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`PayPal Order Creation Failed: ${err}`);
     }
 
-    return await res.json();
+    return await response.json();
   }
-}
 
-export async function createPayPalOrder(
-  amount: number,
-  currency: string = 'USD',
-  description: string = 'PayAgent Purchase Requisition'
-) {
-  const client = new PayPalClient();
-  return await client.createOrder(amount, currency, description);
+  async captureOrder(orderId: string) {
+    const token = await this.getAccessToken();
+    const response = await fetch(`${this.baseUrl}/v2/checkout/orders/${orderId}/capture`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      console.warn(`[PayPal Capture Warn]: ${err}`);
+    }
+
+    return response.ok ? await response.json() : null;
+  }
 }

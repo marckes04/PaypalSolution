@@ -1,10 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getPurchaseOrders } from '@/lib/firebase/ordersService';
 
-export async function GET(request: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const orders = await getPurchaseOrders();
+    // Reading searchParams flags this route handler as dynamic at runtime
+    const _t = req.nextUrl.searchParams.get('t');
 
+    const orders = await getPurchaseOrders();
     return NextResponse.json(
       { orders },
       {
@@ -15,9 +17,8 @@ export async function GET(request: Request) {
         },
       }
     );
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch orders';
-    console.error('[API_ORDERS_ERROR]', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (error) {
+    console.error('[API_ORDERS_GET_ERROR]:', error);
+    return NextResponse.json({ orders: [] }, { status: 500 });
   }
 }

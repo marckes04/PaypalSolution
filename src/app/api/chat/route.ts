@@ -1,200 +1,182 @@
-import { NextResponse } from 'next/server';
-import { savePurchaseOrder } from '@/lib/firebase/ordersService';
+import { NextRequest, NextResponse } from 'next/server';
 import { PayPalClient } from '@/lib/paypal/client';
+import { savePurchaseOrder } from '@/lib/firebase/ordersService';
 
-export async function POST(req: Request) {
+interface ParsedRequisition {
+  isProcurementRequest: boolean;
+  department: string;
+  items: Array<{ name: string; quantity: number; unitPrice: number }>;
+  totalAmount: number;
+}
+
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const rawMessage: string = body.message || '';
-    const activeDepartment: string = (body.department || 'Engineering').trim();
+    const message: string = (body.message || '').trim();
+    const activeDept: string = body.department || 'Engineering';
 
-    // 1. Quitar cualquier prefijo tipo "[Dept: ...]" para analizar solo el mensaje real
-    const userPrompt = rawMessage.replace(/^\[Dept:\s*[^\]]+\]\s*/i, '').trim();
+    // 1. Filter out empty, random, or short inputs ('s', 'as', etc.)
+    if (!message || message.length < 5) {
+      return NextResponse.json({
+        reply: "Please provide a valid procurement request. Example: 'Procure 2 ergonomic keyboards at $60 each for Engineering'.",
+        success: false,
+      });
+    }
 
-    // 2. Extraer el departamento solicitado mediante "for <Depto>" o "para <Depto>"
-    const forMatch = userPrompt.match(/\b(?:for|to|para)\s+([a-zA-Z]+)\b/i);
+    // 2. Entity Extraction
+    let parsed: ParsedRequisition | null = null;
+    const apiKey = process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY;
 
-    if (forMatch && forMatch[1]) {
-      const targetDept = forMatch[1].trim();
-      const validDepartments = [
-        'Marketing',
-        'Engineering',
-        'Sales',
-        'Finance',
-        'Operations',
-        'HR',
-        'Legal',
-      ];
+    if (apiKey) {
+      try {
+        const systemPrompt = `You are a B2B procurement engine. Extract requisition data and return ONLY a valid JSON object matching this schema:
+        {
+          "isProcurementRequest": boolean,
+          "department": string,
+          "items": [{"name": string, "quantity": number, "unitPrice": number}],
+          "totalAmount": number
+        }
+        If the message is not a valid procurement requisition, set isProcurementRequest to false.`;
 
-      const matchedValidDept = validDepartments.find(
-        (d) => d.toLowerCase() === targetDept.toLowerCase()
-      );
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: `[Dept: ${activeDept}] ${message}` },
+            ],
+            response_format: { type: 'json_object' },
+            temperature: 0,
+          }),
+        });
 
-      // Si el departamento mencionado tras "for" existe y es diferente al seleccionado en la UI
-      if (
-        matchedValidDept &&
-        matchedValidDept.toLowerCase() !== activeDepartment.toLowerCase()
-      ) {
-        const mismatchMessage = `⚠️ Policy Mismatch: You requested supplies for **${matchedValidDept}**, but your active workspace is set to **${activeDepartment}**. Please switch your department selector to ${matchedValidDept} before submitting this requisition.`;
+        if (res.ok) {
+          const completion = await res.json();
+          parsed = JSON.parse(completion.choices[0].message.content);
+        }
+      } catch (aiErr) {
+        console.warn('[AI_FALLBACK_TRIGGERED]:', aiErr);
+      }
+    }
 
+    // Heuristic fallback if API key is missing or LLM call fails
+    if (!parsed || !parsed.isProcurementRequest || !parsed.items || parsed.items.length === 0) {
+      const regex = /(?:procure|buy|order)?\s*(\d+)\s+([a-zA-Z\s]+?)\s+(?:at|for)?\s*\$?(\d+(?:\.\d+)?)/i;
+      const match = message.match(regex);
+
+      if (match) {
+        const qty = parseInt(match[1], 10);
+        const name = match[2].trim();
+        const price = parseFloat(match[3]);
+        parsed = {
+          isProcurementRequest: true,
+          department: activeDept,
+          items: [{ name, quantity: qty, unitPrice: price }],
+          totalAmount: qty * price,
+        };
+      } else {
         return NextResponse.json({
+          reply: "Could not identify valid items or amounts. Please follow this format: 'Procure [quantity] [item] at $[price] each'.",
           success: false,
-          requiresDeptChange: true,
-          status: 'REJECTED',
-          reply: mismatchMessage,
-          message: mismatchMessage,
-          response: mismatchMessage,
-          content: mismatchMessage,
         });
       }
     }
 
-    // 3. Extracción de precio explícito ($60, at 60, etc.)
-    let unitPrice = 0;
-    const priceRegexMatch = userPrompt.match(/\$\s*(\d+(\.\d+)?)/);
-    if (priceRegexMatch && priceRegexMatch[1]) {
-      unitPrice = parseFloat(priceRegexMatch[1]);
-    } else {
-      const altPriceMatch = userPrompt.match(/\bat\s+(\d+(\.\d+)?)/i);
-      if (altPriceMatch && altPriceMatch[1]) {
-        unitPrice = parseFloat(altPriceMatch[1]);
-      }
-    }
+    const total = parsed.totalAmount;
+    const internalOrderId = `po_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const THRESHOLD = 500.0;
 
-    // 4. Extracción de cantidad y descripción del ítem
-    let quantity = 1;
-    let itemName = '';
+    // 3. Corporate Governance: STP (< $500) vs HITL via PayPal (>= $500)
+    if (total < THRESHOLD) {
+      const orderRecord = {
+        id: internalOrderId,
+        prompt: message,
+        department: parsed.department || activeDept,
+        currency: 'USD',
+        items: parsed.items,
+        totalAmount: total,
+        status: 'APPROVED',
+        paypalOrderId: null,
+        approvalUrl: null,
+        approvalLink: '',
+        createdAt: new Date().toISOString(),
+        logs: [
+          {
+            timestamp: new Date().toISOString(),
+            agentStep: 'POLICY_EVALUATION',
+            detail: `Total $${total.toFixed(2)} USD is under threshold ($${THRESHOLD.toFixed(2)}). Straight-Through APPROVED.`,
+          },
+        ],
+        auditLog: [
+          `Requisition processed on ${new Date().toISOString()} - Dept: ${parsed.department || activeDept} - Total: $${total}`,
+        ],
+      };
 
-    const qtyRegexMatch = userPrompt.match(/(\d+)\s+([a-zA-Z0-9\s\-]+?)\s+at/i);
-    if (qtyRegexMatch) {
-      if (qtyRegexMatch[1]) quantity = parseInt(qtyRegexMatch[1], 10);
-      if (qtyRegexMatch[2]) itemName = qtyRegexMatch[2].trim();
-    } else {
-      const simpleNumberMatch = userPrompt.match(/\b(\d+)\b/);
-      if (simpleNumberMatch && simpleNumberMatch[1]) {
-        const potentialQty = parseInt(simpleNumberMatch[1], 10);
-        if (potentialQty > 0 && potentialQty !== unitPrice) {
-          quantity = potentialQty;
-        }
-      }
-    }
-
-    // 5. Verificación de intención de compra y datos mínimos requeridos
-    const procurementKeywords = /\b(procure|buy|order|purchase|need|request|requisition|comprar|pedir|solicitar|adquirir)\b/i;
-    const hasProcurementIntent = procurementKeywords.test(userPrompt);
-
-    // Si NO hay intención de compra o NO se especificó un precio válido:
-    // NO se crea orden ni se llama a PayPal, solo se responde conversacionalmente
-    if (!hasProcurementIntent || unitPrice <= 0) {
-      const helpMessage = `I am PayAgent, your procurement copilot. To submit a requisition, please specify the quantity, item description, and price (e.g., "Procure 2 ergonomic keyboards at $60 each for ${activeDepartment}").`;
+      await savePurchaseOrder(orderRecord);
 
       return NextResponse.json({
+        reply: `Requisition processed successfully under Straight-Through Processing (Total: $${total.toFixed(2)} USD). Status: APPROVED.`,
         success: true,
-        status: 'IGNORED',
-        reply: helpMessage,
-        message: helpMessage,
-        response: helpMessage,
-        content: helpMessage,
+        order: orderRecord,
+      });
+    } else {
+      // High-value spend (>= $500): Generate PayPal Sandbox Order
+      const paypal = new PayPalClient();
+      const paypalOrder = await paypal.createOrder(
+        total,
+        'USD',
+        `Requisition ${internalOrderId} for ${parsed.department || activeDept}`,
+        internalOrderId
+      );
+
+      const approvalUrl = paypalOrder.links?.find((l: any) => l.rel === 'approve')?.href || '';
+
+      const orderRecord = {
+        id: internalOrderId,
+        prompt: message,
+        department: parsed.department || activeDept,
+        currency: 'USD',
+        items: parsed.items,
+        totalAmount: total,
+        status: 'PENDING_APPROVAL',
+        paypalOrderId: paypalOrder.id,
+        approvalUrl: approvalUrl,
+        approvalLink: approvalUrl,
+        createdAt: new Date().toISOString(),
+        logs: [
+          {
+            timestamp: new Date().toISOString(),
+            agentStep: 'POLICY_EVALUATION',
+            detail: `Total $${total.toFixed(2)} USD exceeds corporate threshold ($${THRESHOLD.toFixed(2)}). Routed to PENDING_APPROVAL.`,
+          },
+        ],
+        auditLog: [
+          `Requisition processed on ${new Date().toISOString()} - Dept: ${parsed.department || activeDept} - Total: $${total}`,
+        ],
+      };
+
+      await savePurchaseOrder(orderRecord);
+
+      return NextResponse.json({
+        reply: `Requisition for $${total.toFixed(2)} USD exceeds the $500 threshold. Managerial authorization required via PayPal Sandbox.`,
+        success: true,
+        order: orderRecord,
+        approvalUrl: approvalUrl,
       });
     }
-
-    if (!itemName) {
-      itemName = 'Requested items';
-    }
-
-    const calculatedTotal = Number((quantity * unitPrice).toFixed(2));
-
-    const parsedItems = [
-      {
-        name: itemName,
-        quantity: quantity,
-        unitPrice: unitPrice,
-      },
-    ];
-
-    let paypalOrderId: string | null = null;
-    let approvalUrl: string | null = null;
-
-    // 6. Regla de gobernanza: Requisiciones >= $500 requieren Human-in-the-Loop vía PayPal
-    if (calculatedTotal >= 500) {
-      try {
-        const paypal = new PayPalClient();
-        if (typeof (paypal as any).createOrder === 'function') {
-          const orderResponse = await (paypal as any).createOrder(
-            calculatedTotal,
-            'USD',
-            `Requisition for ${activeDepartment}`
-          );
-          if (orderResponse && orderResponse.id) {
-            paypalOrderId = orderResponse.id;
-            const approveLink = orderResponse.links?.find(
-              (link: any) => link.rel === 'approve'
-            );
-            approvalUrl = approveLink
-              ? approveLink.href
-              : `https://www.sandbox.paypal.com/checkoutnow?token=${paypalOrderId}`;
-          }
-        }
-      } catch (paypalError) {
-        console.error('[PayPal API Fallback Triggered]:', paypalError);
-        paypalOrderId = `SANDBOX_${Date.now()}`;
-        approvalUrl = `https://www.sandbox.paypal.com/checkoutnow?token=${paypalOrderId}`;
-      }
-    }
-
-    const isSTP = calculatedTotal < 500;
-    const orderStatus = isSTP ? 'APPROVED' : 'PENDING_APPROVAL';
-    const timestampIso = new Date().toISOString();
-
-    // 7. Guardar la orden en Firestore / almacenamiento local cumpliendo la interfaz PurchaseOrderDoc
-    const orderData: any = {
-      prompt: userPrompt,
-      department: activeDepartment,
-      currency: 'USD',
-      items: parsedItems,
-      totalAmount: calculatedTotal,
-      status: orderStatus as 'APPROVED' | 'PENDING_APPROVAL',
-      paypalOrderId,
-      approvalUrl,
-      approvalLink: approvalUrl || '',
-      createdAt: timestampIso,
-      logs: [
-        {
-          timestamp: timestampIso,
-          agentStep: 'POLICY_EVALUATION',
-          detail: isSTP
-            ? `Total $${calculatedTotal.toFixed(2)} USD is under threshold ($500.00). Straight-Through APPROVED.`
-            : `Total $${calculatedTotal.toFixed(2)} USD exceeds corporate threshold ($500.00). Routed to PENDING_APPROVAL.`,
-        },
-      ],
-      auditLog: [
-        `Requisition processed on ${timestampIso} - Dept: ${activeDepartment} - Total: $${calculatedTotal}`,
-      ],
-    };
-
-    const savedId = await savePurchaseOrder(orderData);
-
-    const botMessage = isSTP
-      ? `Requisition for $${calculatedTotal.toFixed(2)} (${quantity}x ${itemName}) has been automatically approved via Straight-Through Processing (STP).`
-      : `Requisition for $${calculatedTotal.toFixed(2)} (${quantity}x ${itemName}) exceeds the $500 threshold. Manager approval required via PayPal Sandbox.`;
-
-    return NextResponse.json({
-      success: true,
-      orderId: savedId,
-      status: orderStatus,
-      approvalUrl: approvalUrl,
-      reply: botMessage,
-      message: botMessage,
-      response: botMessage,
-      content: botMessage,
-    });
-  } catch (error: any) {
-    console.error('[API /api/chat Error]:', error);
+  } catch (err: any) {
+    console.error('[API_CHAT_CRITICAL_ERROR]:', err);
     return NextResponse.json(
       {
-        error: error?.message || 'Failed to process requisition',
+        reply: "An error occurred while evaluating the requisition. Please verify input parameters and try again.",
+        success: false,
       },
-      { status: 500 }
+      { status: 200 }
     );
   }
 }
