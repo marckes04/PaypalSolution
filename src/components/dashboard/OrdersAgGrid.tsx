@@ -35,29 +35,37 @@ export default function OrdersAgGrid() {
           Pragma: 'no-cache',
         },
       });
-      if (res.ok) {
-        const data = await res.json();
-        // Accepts both { orders: [...] } and raw [...]
-        const list = Array.isArray(data) ? data : data.orders || [];
-        setRowData([...list]);
+
+      if (!res.ok) return;
+
+      const data = await res.json();
+      let list: PurchaseOrderDoc[] = [];
+
+      if (Array.isArray(data)) {
+        list = data;
+      } else if (data && Array.isArray(data.orders)) {
+        list = data.orders;
       }
-    } catch {
-      // Ignore transient network errors
+
+      setRowData(list);
+    } catch (err) {
+      console.error('[AG_GRID_FETCH_ERROR]:', err);
     }
   }, []);
 
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 2000);
+    const interval = setInterval(fetchOrders, 1500);
 
-    const handleOrderCreated = () => {
-      fetchOrders();
+    const onOrderCreated = () => {
+      setTimeout(fetchOrders, 300);
     };
-    window.addEventListener('order-created', handleOrderCreated);
+
+    window.addEventListener('order-created', onOrderCreated);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('order-created', handleOrderCreated);
+      window.removeEventListener('order-created', onOrderCreated);
     };
   }, [fetchOrders]);
 
@@ -83,7 +91,7 @@ export default function OrdersAgGrid() {
         flex: 1,
         cellRenderer: (params: any) => (
           <span className="font-mono text-xs text-zinc-400">
-            {params.value ? `${params.value.slice(0, 11)}...` : '-'}
+            {params.value ? `${String(params.value).slice(0, 11)}...` : '-'}
           </span>
         ),
       },
@@ -156,8 +164,8 @@ export default function OrdersAgGrid() {
               ? `https://www.sandbox.paypal.com/checkoutnow?token=${order.paypalOrderId}`
               : null);
 
-          // Support both PENDING and PENDING_APPROVAL status strings
-          const isPending = order?.status === 'PENDING' || order?.status === 'PENDING_APPROVAL';
+          const isPending =
+            order?.status === 'PENDING' || order?.status === 'PENDING_APPROVAL';
 
           if (url && isPending) {
             return (
@@ -184,7 +192,7 @@ export default function OrdersAgGrid() {
       <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900">
         <div>
           <h2 className="text-sm font-semibold text-zinc-100">Live Procurement Ledger</h2>
-          <p className="text-xs text-zinc-500">Real-time AG Grid sync with PayPal Sandbox & Firestore</p>
+          <p className="text-xs text-zinc-500">Real-time AG Grid sync with PayPal Sandbox &amp; Firestore</p>
         </div>
         <span className="text-xs text-zinc-400 bg-zinc-800/80 px-2.5 py-1 rounded-md border border-zinc-700/50">
           {rowData.length} Records

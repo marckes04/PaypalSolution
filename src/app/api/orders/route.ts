@@ -4,13 +4,10 @@ import { getPurchaseOrders } from '@/lib/firebase/ordersService';
 export async function GET(req: NextRequest) {
   try {
     const _t = req.nextUrl.searchParams.get('t');
-    const result = await getPurchaseOrders();
-
-    // Resilient parsing: handles both raw array and wrapped object
-    const ordersList = Array.isArray(result) ? result : (result as any)?.orders || [];
+    const orders = await getPurchaseOrders();
 
     return NextResponse.json(
-      { orders: ordersList },
+      { orders },
       {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -20,7 +17,7 @@ export async function GET(req: NextRequest) {
       }
     );
   } catch (error) {
-    console.error('[API_ORDERS_GET_ERROR]:', error);
-    return NextResponse.json({ orders: [] }, { status: 500 });
+    console.error('[API_ORDERS_ERROR]:', error);
+    return NextResponse.json({ orders: [] }, { status: 200 });
   }
 }
