@@ -3,12 +3,14 @@ import { getPurchaseOrders } from '@/lib/firebase/ordersService';
 
 export async function GET(req: NextRequest) {
   try {
-    // Reading searchParams flags this route handler as dynamic at runtime
     const _t = req.nextUrl.searchParams.get('t');
+    const result = await getPurchaseOrders();
 
-    const orders = await getPurchaseOrders();
+    // Resilient parsing: handles both raw array and wrapped object
+    const ordersList = Array.isArray(result) ? result : (result as any)?.orders || [];
+
     return NextResponse.json(
-      { orders },
+      { orders: ordersList },
       {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',

@@ -13,7 +13,6 @@ import { PurchaseOrderDoc } from '@/types/order';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-// Tema oscuro nativo sin errores de colisión CSS
 const customDarkTheme = themeQuartz.withParams({
   backgroundColor: '#09090b',
   foregroundColor: '#f4f4f5',
@@ -38,12 +37,12 @@ export default function OrdersAgGrid() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.orders && Array.isArray(data.orders)) {
-          setRowData([...data.orders]);
-        }
+        // Accepts both { orders: [...] } and raw [...]
+        const list = Array.isArray(data) ? data : data.orders || [];
+        setRowData([...list]);
       }
     } catch {
-      // Ignorar errores transitorios de conexión
+      // Ignore transient network errors
     }
   }, []);
 
@@ -157,7 +156,10 @@ export default function OrdersAgGrid() {
               ? `https://www.sandbox.paypal.com/checkoutnow?token=${order.paypalOrderId}`
               : null);
 
-          if (url && order?.status === 'PENDING_APPROVAL') {
+          // Support both PENDING and PENDING_APPROVAL status strings
+          const isPending = order?.status === 'PENDING' || order?.status === 'PENDING_APPROVAL';
+
+          if (url && isPending) {
             return (
               <a
                 href={url}
