@@ -42,7 +42,7 @@ function DashboardContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  // 1. Cargar desde localStorage
+  // 1. Cargar historial persistido desde localStorage tras el montaje del cliente
   useEffect(() => {
     try {
       const stored = localStorage.getItem('payagent_orders');
@@ -52,10 +52,12 @@ function DashboardContent() {
           setOrders(parsed);
         }
       }
-    } catch {}
+    } catch (e) {
+      console.error('Error reading localStorage:', e);
+    }
   }, []);
 
-  // 2. Función unificada para mutar el estado
+  // 2. Función centralizada para aprobar o rechazar transacciones (HITL)
   const applyDecision = (orderId: string, status: 'APPROVED' | 'REJECTED') => {
     setOrders((prev) => {
       const updated = prev.map((ord) => {
@@ -66,8 +68,10 @@ function DashboardContent() {
       });
       try {
         localStorage.setItem('payagent_orders', JSON.stringify(updated));
-      } catch {}
-      return [...updated]; // Nuevo array para forzar re-render de React
+      } catch (e) {
+        console.error('Error saving decision to localStorage:', e);
+      }
+      return [...updated];
     });
 
     setRefreshKey((k) => k + 1);
@@ -77,10 +81,11 @@ function DashboardContent() {
     } else {
       setSuccessBanner(`Order ${orderId} rejected by Procurement Policy Override.`);
     }
-    setTimeout(() => setSuccessBanner(null), 5000);
+    const timer = setTimeout(() => setSuccessBanner(null), 5000);
+    return () => clearTimeout(timer);
   };
 
-  // 3. Escuchar evento global directo por si el callback de AG Grid fue bloqueado
+  // 3. Listener de eventos globales para capturar decisiones de AG Grid
   useEffect(() => {
     const handleStatusEvent = (event: any) => {
       if (event.detail && event.detail.id && event.detail.status) {
@@ -92,7 +97,7 @@ function DashboardContent() {
     return () => window.removeEventListener('order-status-changed', handleStatusEvent);
   }, []);
 
-  // 4. Retorno de PayPal Sandbox en URL
+  // 4. Detección de retorno automático desde PayPal Sandbox
   useEffect(() => {
     if (searchParams.get('approved') === 'true') {
       const ref = searchParams.get('ref') || 'Processed';
@@ -101,14 +106,16 @@ function DashboardContent() {
     }
   }, [searchParams, router]);
 
-  // 5. Creación de orden desde el Chat
+  // 5. Inserción inmediata de una orden creada en el chat
   const handleOrderCreated = (newOrder?: any) => {
     if (newOrder && newOrder.id) {
       setOrders((prev) => {
         const updated = [newOrder, ...prev.filter((o) => o.id !== newOrder.id)];
         try {
           localStorage.setItem('payagent_orders', JSON.stringify(updated));
-        } catch {}
+        } catch (e) {
+          console.error('Error saving new order to localStorage:', e);
+        }
         return [...updated];
       });
     }
@@ -117,6 +124,7 @@ function DashboardContent() {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
+      {/* Barra superior de navegación */}
       <header className="h-16 border-b border-zinc-800 px-6 flex items-center justify-between bg-zinc-950/80 backdrop-blur sticky top-0 z-50">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center font-bold text-white shadow-lg shadow-sky-600/30">
@@ -135,6 +143,7 @@ function DashboardContent() {
         </div>
       </header>
 
+      {/* Banner de confirmación */}
       {successBanner && (
         <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-6 py-2.5 flex items-center gap-2 text-xs font-medium text-emerald-400 transition-all">
           <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
@@ -142,9 +151,12 @@ function DashboardContent() {
         </div>
       )}
 
+      {/* Panel principal */}
       <div className="flex-1 p-6 flex flex-col max-w-[1800px] w-full mx-auto">
+        {/* Tarjetas KPI conectadas de forma reactiva a orders */}
         <KpiCards key={`kpi-${refreshKey}`} orders={orders} />
 
+        {/* Distribución dividida de Chat y Tabla AG Grid */}
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[640px] h-[calc(100vh-16rem)]">
           <div className="lg:col-span-5 h-full">
             <ChatInterface onOrderCreated={handleOrderCreated} />

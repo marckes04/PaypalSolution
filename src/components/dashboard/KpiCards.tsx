@@ -1,80 +1,70 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { DollarSign, Clock, ShieldCheck, TrendingUp } from 'lucide-react';
+import React from 'react';
+import { DollarSign, Clock, ShieldCheck } from 'lucide-react';
 import { PurchaseOrderDoc } from '@/types/order';
 
-export default function KpiCards() {
-  const [orders, setOrders] = useState<PurchaseOrderDoc[]>([]);
+interface KpiCardsProps {
+  orders?: PurchaseOrderDoc[];
+}
 
-  const fetchOrders = async () => {
-    try {
-      const res = await fetch('/api/orders');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.orders && Array.isArray(data.orders)) {
-          setOrders(data.orders);
-        }
-      }
-    } catch {
-      // Ignorar fallos de red transitorios
-    }
-  };
+export default function KpiCards({ orders = [] }: KpiCardsProps) {
+  // 1. Total Spend: Suma únicamente las órdenes autorizadas/aprobadas
+  const totalAuthorized = orders
+    .filter((o) => o.status === 'APPROVED')
+    .reduce((acc, curr) => acc + (Number(curr.totalAmount) || 0), 0);
 
-  useEffect(() => {
-    fetchOrders();
-    const interval = setInterval(fetchOrders, 2500);
-    return () => clearInterval(interval);
-  }, []);
+  // 2. Pending Review: Cuenta ÚNICAMENTE las órdenes pendientes
+  const pendingCount = orders.filter(
+    (o) => o.status === 'PENDING' || o.status === 'PENDING_APPROVAL'
+  ).length;
 
-  const totalSpend = orders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
-  const pendingCount = orders.filter((o) => o.status === 'PENDING_APPROVAL').length;
-  const approvedOrders = orders.filter((o) => o.status === 'APPROVED');
-  const straightThroughCount = approvedOrders.filter((o) => (Number(o.totalAmount) || 0) < 500).length;
-  const autonomyRate = orders.length > 0 
-    ? Math.round((straightThroughCount / orders.length) * 100) 
-    : 100;
+  // 3. Autonomous STP Rate: % de órdenes aprobadas de forma directa sin requerir HITL
+  const totalCount = orders.length;
+  const approvedCount = orders.filter((o) => o.status === 'APPROVED').length;
+  const stpRate = totalCount > 0 ? Math.round((approvedCount / totalCount) * 100) : 100;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between shadow-lg">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      {/* Total Spend Authorized */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg flex items-center justify-between">
         <div>
           <p className="text-xs font-medium text-zinc-400">Total Spend Authorized</p>
-          <p className="text-2xl font-bold text-zinc-100 mt-1">
-            ${totalSpend.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
+          <h3 className="text-2xl font-bold text-zinc-100 mt-1">
+            ${totalAuthorized.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </h3>
           <p className="text-[11px] text-zinc-500 mt-1 flex items-center gap-1">
-            <TrendingUp className="w-3 h-3 text-sky-400" /> Across all departments
+            <span className="text-emerald-400 font-semibold">↗</span> Across all departments
           </p>
         </div>
-        <div className="w-10 h-10 rounded-lg bg-sky-950 border border-sky-800/50 flex items-center justify-center text-sky-400">
-          <DollarSign className="w-5 h-5" />
+        <div className="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+          <DollarSign size={20} />
         </div>
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between shadow-lg">
+      {/* Pending Manager Review */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg flex items-center justify-between">
         <div>
           <p className="text-xs font-medium text-zinc-400">Pending Manager Review</p>
-          <p className="text-2xl font-bold text-amber-400 mt-1">{pendingCount}</p>
-          <p className="text-[11px] text-zinc-500 mt-1 flex items-center gap-1">
-            <Clock className="w-3 h-3 text-amber-400" /> Requisitions &ge; $500 threshold
-          </p>
+          <h3 className="text-2xl font-bold text-zinc-100 mt-1">{pendingCount}</h3>
+          <p className="text-[11px] text-zinc-500 mt-1">Requisitions ≥ $500 threshold</p>
         </div>
-        <div className="w-10 h-10 rounded-lg bg-amber-950 border border-amber-800/50 flex items-center justify-center text-amber-400">
-          <Clock className="w-5 h-5" />
+        <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+          <Clock size={20} />
         </div>
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center justify-between shadow-lg">
+      {/* Autonomous STP Rate */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg flex items-center justify-between">
         <div>
           <p className="text-xs font-medium text-zinc-400">Autonomous STP Rate</p>
-          <p className="text-2xl font-bold text-emerald-400 mt-1">{autonomyRate}%</p>
+          <h3 className="text-2xl font-bold text-zinc-100 mt-1">{stpRate}%</h3>
           <p className="text-[11px] text-zinc-500 mt-1 flex items-center gap-1">
-            <ShieldCheck className="w-3 h-3 text-emerald-400" /> Straight-Through approvals
+            <span className="text-emerald-400 font-semibold">✔</span> Straight-Through approvals
           </p>
         </div>
-        <div className="w-10 h-10 rounded-lg bg-emerald-950 border border-emerald-800/50 flex items-center justify-center text-emerald-400">
-          <ShieldCheck className="w-5 h-5" />
+        <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+          <ShieldCheck size={20} />
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import {
   ColDef,
@@ -9,7 +9,7 @@ import {
   themeQuartz,
   ICellRendererParams,
 } from 'ag-grid-community';
-import { ExternalLink, CheckCircle2, Clock, XCircle, Check, X } from 'lucide-react';
+import { ExternalLink, CheckCircle2, Clock, XCircle, Check, X, Filter } from 'lucide-react';
 import { PurchaseOrderDoc } from '@/types/order';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -30,13 +30,14 @@ interface OrdersAgGridProps {
 }
 
 export default function OrdersAgGrid({ orders = [], onAction }: OrdersAgGridProps) {
+  // Estado para alternar entre ver todas o solo las pendientes
+  const [filterMode, setFilterMode] = useState<'ALL' | 'PENDING'>('ALL');
+
   const triggerDecision = useCallback(
     (orderId: string, action: 'APPROVED' | 'REJECTED') => {
-      // 1. Ejecutar callback del padre si existe
       if (onAction) {
         onAction(orderId, action);
       }
-      // 2. Disparar evento global para garantizar captura
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('order-status-changed', {
@@ -49,6 +50,23 @@ export default function OrdersAgGrid({ orders = [], onAction }: OrdersAgGridProp
   );
 
   const gridContext = useMemo(() => ({ triggerDecision }), [triggerDecision]);
+
+  // Contar órdenes pendientes para el badge numérico del botón
+  const pendingCount = useMemo(() => {
+    return orders.filter(
+      (o) => o.status === 'PENDING' || o.status === 'PENDING_APPROVAL'
+    ).length;
+  }, [orders]);
+
+  // Filtrado reactivo de las filas pasadas al AG Grid
+  const displayedOrders = useMemo(() => {
+    if (filterMode === 'PENDING') {
+      return orders.filter(
+        (o) => o.status === 'PENDING' || o.status === 'PENDING_APPROVAL'
+      );
+    }
+    return orders;
+  }, [orders, filterMode]);
 
   const columnDefs = useMemo<ColDef<PurchaseOrderDoc>[]>(
     () => [
@@ -153,7 +171,7 @@ export default function OrdersAgGrid({ orders = [], onAction }: OrdersAgGridProp
             return (
               <div
                 className="flex items-center gap-2 h-full py-1"
-                onClick={(e) => e.stopPropagation()} // Previene que AG Grid consuma el evento
+                onClick={(e) => e.stopPropagation()}
               >
                 <button
                   type="button"
@@ -163,6 +181,7 @@ export default function OrdersAgGrid({ orders = [], onAction }: OrdersAgGridProp
                     params.context.triggerDecision(order.id, 'APPROVED');
                   }}
                   className="px-2.5 py-1 bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40 rounded text-[11px] font-semibold inline-flex items-center gap-1 transition-all cursor-pointer shadow-sm active:scale-95"
+                  title="Approve Requisition"
                 >
                   <Check size={12} /> Approve
                 </button>
@@ -174,6 +193,7 @@ export default function OrdersAgGrid({ orders = [], onAction }: OrdersAgGridProp
                     params.context.triggerDecision(order.id, 'REJECTED');
                   }}
                   className="px-2 py-1 bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 border border-rose-500/40 rounded text-[11px] font-semibold inline-flex items-center gap-1 transition-all cursor-pointer shadow-sm active:scale-95"
+                  title="Reject Requisition"
                 >
                   <X size={12} /> Reject
                 </button>
@@ -190,23 +210,59 @@ export default function OrdersAgGrid({ orders = [], onAction }: OrdersAgGridProp
 
   return (
     <div className="h-[600px] w-full flex flex-col bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-xl">
+      {/* Encabezado con selector de filtros */}
       <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900">
         <div>
           <h2 className="text-sm font-semibold text-zinc-100">Live Procurement Ledger</h2>
           <p className="text-xs text-zinc-500">Real-time AG Grid sync with PayPal Sandbox &amp; Firestore</p>
         </div>
-        <span
-          suppressHydrationWarning
-          className="text-xs text-zinc-400 bg-zinc-800/80 px-2.5 py-1 rounded-md border border-zinc-700/50"
-        >
-          {orders.length} Records
-        </span>
+
+        <div className="flex items-center gap-2">
+          {/* Botones de alternancia de vista */}
+          <div className="flex items-center bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+            <button
+              type="button"
+              onClick={() => setFilterMode('ALL')}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                filterMode === 'ALL'
+                  ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              All Orders ({orders.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterMode('PENDING')}
+              className={`px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-all ${
+                filterMode === 'PENDING'
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm'
+                  : 'text-zinc-400 hover:text-amber-400'
+              }`}
+            >
+              <Filter size={12} />
+              Pending Review
+              {pendingCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-amber-500/30 text-amber-300 text-[10px] flex items-center justify-center font-bold">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+          </div>
+
+          <span
+            suppressHydrationWarning
+            className="text-xs text-zinc-400 bg-zinc-800/80 px-2.5 py-1 rounded-md border border-zinc-700/50"
+          >
+            {displayedOrders.length} Shown
+          </span>
+        </div>
       </div>
 
       <div className="flex-1 w-full h-full">
         <AgGridReact
           theme={customDarkTheme}
-          rowData={orders}
+          rowData={displayedOrders}
           columnDefs={columnDefs}
           context={gridContext}
           defaultColDef={{
