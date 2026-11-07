@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import {
   ColDef,
@@ -23,22 +23,30 @@ const customDarkTheme = themeQuartz.withParams({
   rowHoverColor: '#27272a',
 });
 
-const SEED_DATA: PurchaseOrderDoc[] = [
+// Datos base fijos con marcas de tiempo estáticas
+const BASE_FIXED_ORDERS: PurchaseOrderDoc[] = [
   {
-    id: 'po_demo_01',
-    createdAt: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
+    id: 'po_1794009581',
+    createdAt: '2026-11-07T01:15:00.000Z',
     department: 'Engineering',
     totalAmount: 120.0,
     status: 'APPROVED',
   },
   {
-    id: 'po_demo_02',
-    createdAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+    id: 'po_1794009320',
+    createdAt: '2026-11-07T00:50:00.000Z',
     department: 'Engineering',
     totalAmount: 850.0,
     status: 'PENDING',
     paypalOrderId: '78B099547L735113U',
     approvalUrl: 'https://www.sandbox.paypal.com/checkoutnow?token=78B099547L735113U',
+  },
+  {
+    id: 'po_1794009110',
+    createdAt: '2026-11-07T00:20:00.000Z',
+    department: 'Engineering',
+    totalAmount: 400.0,
+    status: 'APPROVED',
   },
 ];
 
@@ -47,82 +55,46 @@ interface OrdersAgGridProps {
 }
 
 export default function OrdersAgGrid({ refreshTrigger }: OrdersAgGridProps) {
-  const [rowData, setRowData] = useState<PurchaseOrderDoc[]>(SEED_DATA);
+  const [rowData, setRowData] = useState<PurchaseOrderDoc[]>(BASE_FIXED_ORDERS);
   const [isMounted, setIsMounted] = useState(false);
-
-  const loadAndSyncOrders = useCallback(async () => {
-    let localData: PurchaseOrderDoc[] = [];
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem('payagent_orders');
-        if (stored) localData = JSON.parse(stored);
-      } catch {}
-    }
-
-    try {
-      const res = await fetch(`/api/orders?t=${Date.now()}`, { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        const apiList: PurchaseOrderDoc[] = Array.isArray(data) ? data : data.orders || [];
-
-        const map = new Map<string, PurchaseOrderDoc>();
-        SEED_DATA.forEach((item) => map.set(item.id, item));
-        localData.forEach((item) => map.set(item.id, item));
-        apiList.forEach((item) => map.set(item.id, item));
-
-        const merged = Array.from(map.values()).sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-
-        setRowData(merged);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('payagent_orders', JSON.stringify(merged));
-        }
-        return;
-      }
-    } catch {}
-
-    if (localData.length > 0) {
-      setRowData(localData);
-    } else {
-      setRowData(SEED_DATA);
-    }
-  }, []);
 
   useEffect(() => {
     setIsMounted(true);
 
+    // Cargar historial persistido sin modificar registros base
     try {
       const stored = localStorage.getItem('payagent_orders');
       if (stored) {
-        const parsed = JSON.parse(stored);
+        const parsed: PurchaseOrderDoc[] = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setRowData(parsed);
+          const map = new Map<string, PurchaseOrderDoc>();
+          BASE_FIXED_ORDERS.forEach((o) => map.set(o.id, o));
+          parsed.forEach((o) => map.set(o.id, o));
+          setRowData(Array.from(map.values()));
         }
       }
     } catch {}
 
-    loadAndSyncOrders();
-    const interval = setInterval(loadAndSyncOrders, 2500);
+    // Inserción fija e inmediata al disparar orden desde el chat
+    const handleAddOrder = (event: any) => {
+      if (!event.detail) return;
+      const newOrder: PurchaseOrderDoc = event.detail;
 
-    const onOrderCreated = (event: any) => {
-      if (event.detail && typeof window !== 'undefined') {
-        const newOrder: PurchaseOrderDoc = event.detail;
-        setRowData((prev) => {
-          const updated = [newOrder, ...prev.filter((o) => o.id !== newOrder.id)];
+      setRowData((currentRows) => {
+        const filtered = currentRows.filter((o) => o.id !== newOrder.id);
+        const updated = [newOrder, ...filtered];
+        try {
           localStorage.setItem('payagent_orders', JSON.stringify(updated));
-          return updated;
-        });
-      }
-      loadAndSyncOrders();
+        } catch {}
+        return updated;
+      });
     };
 
-    window.addEventListener('order-created', onOrderCreated);
+    window.addEventListener('order-created', handleAddOrder);
     return () => {
-      clearInterval(interval);
-      window.removeEventListener('order-created', onOrderCreated);
+      window.removeEventListener('order-created', handleAddOrder);
     };
-  }, [loadAndSyncOrders, refreshTrigger]);
+  }, [refreshTrigger]);
 
   const columnDefs = useMemo<ColDef<PurchaseOrderDoc>[]>(
     () => [
@@ -253,7 +225,7 @@ export default function OrdersAgGrid({ refreshTrigger }: OrdersAgGridProps) {
           suppressHydrationWarning
           className="text-xs text-zinc-400 bg-zinc-800/80 px-2.5 py-1 rounded-md border border-zinc-700/50"
         >
-          {isMounted ? rowData.length : SEED_DATA.length} Records
+          {isMounted ? rowData.length : BASE_FIXED_ORDERS.length} Records
         </span>
       </div>
 
